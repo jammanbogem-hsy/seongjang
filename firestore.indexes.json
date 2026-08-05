@@ -1,0 +1,53 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "answers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "submittedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "answers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerParticipantId", "order": "ASCENDING" },
+        { "fieldPath": "submittedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reviewThreads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerParticipantId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "comments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    { "collectionGroup": "answerDrafts", "fieldPath": "content", "indexes": [] },
+    { "collectionGroup": "answers", "fieldPath": "content", "indexes": [] },
+    { "collectionGroup": "answers", "fieldPath": "submittedContent", "indexes": [] },
+    { "collectionGroup": "discussionComments", "fieldPath": "body", "indexes": [] },
+    { "collectionGroup": "projectDrafts", "fieldPath": "description", "indexes": [] },
+    { "collectionGroup": "projectDrafts", "fieldPath": "retrospective", "indexes": [] },
+    { "collectionGroup": "submissions", "fieldPath": "description", "indexes": [] },
+    { "collectionGroup": "submissions", "fieldPath": "retrospective", "indexes": [] },
+    { "collectionGroup": "messages", "fieldPath": "body", "indexes": [] },
+    { "collectionGroup": "joinRateLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
+    { "collectionGroup": "joinRegistrationLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
+    { "collectionGroup": "joinDeviceRegistrationLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
+    { "collectionGroup": "joinIpRegistrationLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
+    { "collectionGroup": "participantAttemptLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
+    { "collectionGroup": "participantIpAttemptLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true }
+  ]
+}

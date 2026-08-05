@@ -4,5 +4,7 @@ coverage/
 .DS_Store
 *.local
 firebase-debug.log*
+firestore-debug.log*
+.firebase/
 .omx/
 /assets/

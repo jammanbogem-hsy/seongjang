@@ -2,7 +2,7 @@ import { useCallback, useState, type ReactNode } from 'react'
 import { useNavigate } from '../app/router'
 import type { CommandResult } from '../domain/models'
 import { AppShell, type AppNavItem } from '../layouts'
-import { Button, Icon, ToastRegion, type ToastMessage } from '../ui'
+import { Button, Card, CatIllustration, Chip, Icon, ToastRegion, type ToastMessage } from '../ui'
 import { usePlatform } from '../app/PlatformProvider'
 
 export const EVENT_ID = 'room-vibe26'
@@ -67,9 +67,62 @@ export function announceResult<T>(
 }
 
 export function OrganizerShell({ children }: { children: ReactNode }) {
-  const { state } = usePlatform()
+  const {
+    authEmail,
+    authRole,
+    backendError,
+    backendPhase,
+    signInOrganizer,
+    signOut,
+    state,
+  } = usePlatform()
+  const [signingIn, setSigningIn] = useState(false)
+  const [authError, setAuthError] = useState('')
+
+  const connectOrganizer = async () => {
+    setSigningIn(true)
+    setAuthError('')
+    const result = await signInOrganizer()
+    if (!result.ok) setAuthError(result.error.message)
+    setSigningIn(false)
+  }
+
+  if (authRole !== 'owner' && authRole !== 'admin') {
+    return (
+      <AppShell brandTo="/platform" mode="organizer" roomCode={state.room.code}>
+        <main className="page narrow" id="main-content">
+          <Card className="empty-state identity-gate" padding="lg">
+            <CatIllustration decorative size="lg" variant="review" />
+            <Chip icon="verified_user" tone="primary">Firebase 관리자 인증</Chip>
+            <h1>주최자 권한을 확인해주세요.</h1>
+            <p>초대받은 Google 계정으로 로그인하면 참여자 자료와 비공개 검토를 안전하게 불러옵니다.</p>
+            <Button
+              className="identity-gate__primary"
+              disabled={signingIn}
+              leadingIcon="login"
+              onClick={() => { void connectOrganizer() }}
+              size="lg"
+            >
+              {signingIn ? '권한 확인 중…' : 'Google로 주최자 로그인'}
+            </Button>
+            {authError || backendError ? <p className="field-error" role="alert">{authError || backendError}</p> : null}
+          </Card>
+        </main>
+      </AppShell>
+    )
+  }
   return (
     <AppShell
+      actions={
+        <div className="button-row">
+          <Chip icon={backendPhase === 'ready' ? 'cloud_done' : 'cloud_sync'} tone="success">
+            {backendPhase === 'ready' ? 'Firebase 연결됨' : '동기화 중'}
+          </Chip>
+          <Button leadingIcon="logout" onClick={() => { void signOut() }} size="sm" variant="text">
+            {authEmail ? `${authEmail} 로그아웃` : '로그아웃'}
+          </Button>
+        </div>
+      }
       brandTo={`/admin/events/${EVENT_ID}/control`}
       mode="organizer"
       navItems={organizerNav}
@@ -81,9 +134,22 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
 }
 
 export function ParticipantShell({ children }: { children: ReactNode }) {
-  const { currentParticipant, state } = usePlatform()
+  const navigate = useNavigate()
+  const { currentParticipant, signOut, state } = usePlatform()
   return (
     <AppShell
+      actions={currentParticipant ? (
+        <Button
+          leadingIcon="person_add"
+          onClick={() => {
+            void signOut().then(() => navigate(`/join/${state.room.code}`))
+          }}
+          size="sm"
+          variant="text"
+        >
+          다른 닉네임
+        </Button>
+      ) : undefined}
       brandTo={`/events/${EVENT_ID}/live`}
       mode="participant"
       navItems={participantNav}

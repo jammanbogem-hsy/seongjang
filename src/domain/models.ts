@@ -75,6 +75,7 @@ export interface Answer {
   createdAt: string
   updatedAt: string
   submittedAt: string | null
+  draftRevision?: number
 }
 
 export interface Comment {
@@ -131,6 +132,7 @@ export interface Submission {
   createdAt: string
   updatedAt: string
   submittedAt: string | null
+  draftRevision?: number
 }
 
 export interface Synthesis {
@@ -138,6 +140,7 @@ export interface Synthesis {
   nicknamePolicy: NicknamePolicy
   themeIds: Identifier[]
   highlightAnswerIds: Identifier[]
+  revision: number
   updatedAt: string
 }
 
@@ -274,6 +277,7 @@ export interface JoinParticipantInput {
 }
 
 export interface SaveAnswerInput {
+  baseRevision?: number
   participantId: Identifier
   slideId: Identifier
   content: string
@@ -320,6 +324,7 @@ export interface SetReviewThreadStatusInput {
 }
 
 export interface SubmitProjectInput {
+  baseRevision?: number
   participantId: Identifier
   title: string
   pitch: string
@@ -333,6 +338,7 @@ export interface SubmitProjectInput {
 }
 
 export interface UpdateSynthesisInput {
+  expectedRevision: number
   organizerSummary?: string
   nicknamePolicy?: NicknamePolicy
   themeIds?: Identifier[]

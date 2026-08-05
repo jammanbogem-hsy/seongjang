@@ -1,0 +1,267 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberPath(eventId) {
+      return /databases/$(database)/documents/events/$(eventId)/members/$(request.auth.uid);
+    }
+
+    function isActiveMember(eventId) {
+      return signedIn()
+        && exists(memberPath(eventId))
+        && get(memberPath(eventId)).data.status == 'active';
+    }
+
+    function isOrganizer(eventId) {
+      return isActiveMember(eventId)
+        && get(memberPath(eventId)).data.role in ['owner', 'admin'];
+    }
+
+    function isParticipant(eventId) {
+      return isActiveMember(eventId)
+        && get(memberPath(eventId)).data.role == 'participant';
+    }
+
+    function answerWindowOpen(eventId, slideId) {
+      let live = get(/databases/$(database)/documents/events/$(eventId)/live/state).data;
+      let slide = get(/databases/$(database)/documents/events/$(eventId)/slides/$(slideId)).data;
+      let activeWindow = live.activeSlideId == slideId
+        && live.timerStatus != 'complete'
+        && (live.endsAt == null || request.time < live.endsAt);
+      let previousSlideGrace = live.previousSlideId == slideId
+        && live.draftGraceUntil != null
+        && request.time < live.draftGraceUntil;
+      return (activeWindow || previousSlideGrace)
+        && slide.answersRevealed == false
+        ;
+    }
+
+    match /users/{uid}/memberships/{eventId} {
+      allow get, list: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /events/{eventId} {
+      allow read: if isActiveMember(eventId);
+      allow write: if false;
+
+      match /members/{uid} {
+        allow read: if isOrganizer(eventId) || (signedIn() && request.auth.uid == uid);
+        allow write: if false;
+
+        match /drafts/{draftId} {
+          allow read: if isOrganizer(eventId) || (signedIn() && request.auth.uid == uid);
+          allow create, update: if isActiveMember(eventId)
+            && request.auth.uid == uid
+            && request.resource.data.keys().hasOnly([
+              'clientMutationId', 'clientUpdatedAt', 'deviceId', 'payload',
+              'targetId', 'targetType', 'updatedAt'
+            ])
+            && request.resource.data.clientMutationId is string
+            && request.resource.data.clientMutationId.size() <= 180
+            && request.resource.data.clientUpdatedAt is string
+            && request.resource.data.clientUpdatedAt.size() <= 48
+            && request.resource.data.deviceId is string
+            && request.resource.data.deviceId.size() <= 180
+            && request.resource.data.targetId is string
+            && request.resource.data.targetId.size() <= 180
+            && request.resource.data.targetType in [
+              'comment', 'comment-edit', 'review-composer', 'review-reply'
+            ]
+            && request.resource.data.payload is map
+            && request.resource.data.payload.keys().hasOnly(['body', 'field'])
+            && request.resource.data.payload.body is string
+            && request.resource.data.payload.body.size() <= 1000
+            && (!request.resource.data.payload.keys().hasAny(['field'])
+              || (request.resource.data.payload.field is string
+                && request.resource.data.payload.field.size() <= 120))
+            && request.resource.data.updatedAt == request.time;
+          allow delete: if isActiveMember(eventId) && request.auth.uid == uid;
+        }
+      }
+
+      match /participants/{uid} {
+        allow read: if isOrganizer(eventId) || (signedIn() && request.auth.uid == uid);
+        allow write: if false;
+      }
+
+      match /participantDirectory/{uid} {
+        allow read: if isActiveMember(eventId);
+        allow write: if false;
+      }
+
+      match /live/{documentId} {
+        allow read: if isActiveMember(eventId);
+        allow write: if false;
+      }
+
+      match /slides/{slideId} {
+        allow read: if isActiveMember(eventId);
+        allow write: if false;
+      }
+
+      match /answerDrafts/{draftId} {
+        allow read: if isOrganizer(eventId)
+          || (isParticipant(eventId) && resource.data.ownerParticipantId == request.auth.uid);
+        allow create, update: if isParticipant(eventId)
+          && draftId == request.auth.uid + '__' + request.resource.data.slideId
+          && request.resource.data.ownerParticipantId == request.auth.uid
+          && request.resource.data.keys().hasOnly([
+            'clientMutationId', 'clientUpdatedAt', 'content', 'deviceId',
+            'ownerParticipantId', 'revision', 'slideId', 'updatedAt'
+          ])
+          && request.resource.data.content is string
+          && request.resource.data.content.size() <= 1200
+          && request.resource.data.slideId is string
+          && request.resource.data.slideId.size() <= 128
+          && request.resource.data.clientMutationId is string
+          && request.resource.data.clientMutationId.size() <= 180
+          && request.resource.data.clientUpdatedAt is string
+          && request.resource.data.clientUpdatedAt.size() <= 48
+          && request.resource.data.deviceId is string
+          && request.resource.data.deviceId.size() <= 180
+          && request.resource.data.revision is int
+          && (
+            (resource == null && request.resource.data.revision == 1)
+            || (resource != null
+              && request.resource.data.revision == resource.data.get('revision', 0) + 1)
+          )
+          && request.resource.data.updatedAt == request.time
+          && answerWindowOpen(eventId, request.resource.data.slideId);
+        allow delete: if isParticipant(eventId)
+          && resource.data.ownerParticipantId == request.auth.uid;
+      }
+
+      match /answers/{answerId} {
+        allow read: if isOrganizer(eventId)
+          || (isParticipant(eventId)
+            && (resource.data.ownerParticipantId == request.auth.uid
+              || resource.data.visibility == 'revealed'));
+        allow write: if false;
+      }
+
+      match /discussionComments/{commentId} {
+        allow read: if isOrganizer(eventId)
+          || (isParticipant(eventId)
+            && resource.data.visibility == 'event');
+        allow write: if false;
+      }
+
+      match /projectDrafts/{draftId} {
+        allow read: if isOrganizer(eventId)
+          || (isParticipant(eventId) && resource.data.ownerParticipantId == request.auth.uid);
+        allow create, update: if isParticipant(eventId)
+          && draftId == request.auth.uid
+          && request.resource.data.ownerParticipantId == request.auth.uid
+          && request.resource.data.keys().hasOnly([
+            'clientMutationId', 'clientUpdatedAt', 'demoUrl', 'description',
+            'deviceId', 'githubUrl', 'ownerParticipantId', 'pitch',
+            'retrospective', 'revision', 'tags', 'title', 'updatedAt'
+          ])
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 60
+          && request.resource.data.pitch is string
+          && request.resource.data.pitch.size() <= 120
+          && request.resource.data.description is string
+          && request.resource.data.description.size() <= 1500
+          && request.resource.data.retrospective is string
+          && request.resource.data.retrospective.size() <= 1200
+          && request.resource.data.demoUrl is string
+          && request.resource.data.demoUrl.size() <= 2000
+          && request.resource.data.githubUrl is string
+          && request.resource.data.githubUrl.size() <= 2000
+          && request.resource.data.tags is list
+          && request.resource.data.tags.size() <= 6
+          && request.resource.data.clientMutationId is string
+          && request.resource.data.clientMutationId.size() <= 180
+          && request.resource.data.clientUpdatedAt is string
+          && request.resource.data.clientUpdatedAt.size() <= 48
+          && request.resource.data.deviceId is string
+          && request.resource.data.deviceId.size() <= 180
+          && request.resource.data.revision is int
+          && (
+            (resource == null && request.resource.data.revision == 1)
+            || (resource != null
+              && request.resource.data.revision == resource.data.get('revision', 0) + 1)
+          )
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if isParticipant(eventId)
+          && resource.data.ownerParticipantId == request.auth.uid;
+      }
+
+      match /submissions/{submissionId} {
+        allow read: if isOrganizer(eventId)
+          || (isParticipant(eventId) && resource.data.ownerParticipantId == request.auth.uid);
+        allow write: if false;
+      }
+
+      match /reviewThreads/{threadId} {
+        allow read: if isOrganizer(eventId)
+          || (isParticipant(eventId) && resource.data.ownerParticipantId == request.auth.uid);
+        allow write: if false;
+
+        match /messages/{messageId} {
+          allow read: if isOrganizer(eventId)
+            || (isParticipant(eventId)
+              && get(/databases/$(database)/documents/events/$(eventId)/reviewThreads/$(threadId)).data.ownerParticipantId == request.auth.uid);
+          allow write: if false;
+        }
+      }
+
+      match /adminInvites/{inviteId} {
+        allow read: if isOrganizer(eventId);
+        allow write: if false;
+      }
+
+      match /themes/{themeId} {
+        allow read: if isActiveMember(eventId);
+        allow write: if false;
+      }
+
+      match /synthesis/{documentId} {
+        allow read: if isActiveMember(eventId);
+        allow write: if false;
+      }
+
+      match /auditLogs/{logId} {
+        allow read: if isOrganizer(eventId);
+        allow write: if false;
+      }
+
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    match /publicEvents/{slug} {
+      allow get: if true;
+      allow list, write: if false;
+
+      match /revisions/{revision} {
+        allow read: if resource.data.status == 'published'
+          && resource.data.revision == get(/databases/$(database)/documents/publicEvents/$(slug)).data.latestRevision;
+        allow write: if false;
+
+        match /{collectionName}/{documentId} {
+          allow read: if get(/databases/$(database)/documents/publicEvents/$(slug)/revisions/$(revision)).data.status == 'published'
+            && get(/databases/$(database)/documents/publicEvents/$(slug)/revisions/$(revision)).data.revision
+              == get(/databases/$(database)/documents/publicEvents/$(slug)).data.latestRevision
+            && (
+              collectionName in ['stages', 'answers', 'comments', 'themes']
+              || (collectionName == 'projects'
+                && get(/databases/$(database)/documents/publicEvents/$(slug)).data.exhibitionPublished == true)
+            );
+          allow write: if false;
+        }
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

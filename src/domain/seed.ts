@@ -378,6 +378,7 @@ export function createSeedState(): PrototypeState {
       nicknamePolicy: 'nickname',
       themeIds: ['theme-shared-flow', 'theme-quiet-voices', 'theme-portable-memory'],
       highlightAnswerIds: ['answer-01', 'answer-11', 'answer-12', 'answer-14'],
+      revision: 1,
       updatedAt: '2026-08-04T12:10:00.000Z',
     },
     exhibitionPublished: true,

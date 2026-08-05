@@ -1,16 +1,24 @@
 import {
   useEffect,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
 } from 'react'
-import { Link, useNavigate, useParams } from '../app/router'
+import { Link, useLocation, useNavigate, useParams } from '../app/router'
 import { usePlatform } from '../app/PlatformProvider'
 import { createEmbedSnippet, createTextExport, type ExportFormat } from '../domain/exports'
-import type { Answer, Participant, PublicProject, Submission } from '../domain/models'
+import type {
+  Answer,
+  Participant,
+  PublicProject,
+  Submission,
+  UpdateSynthesisInput,
+} from '../domain/models'
 import { downloadTextExport } from '../platform/download'
 import { useAutosave } from '../platform/useAutosave'
 import { usePersistentDraft } from '../platform/usePersistentDraft'
+import { acceptAdminInviteEmailLink, isAdminInviteEmailLink } from '../platform/firebase'
 import { AdminLayout, ParticipantLayout } from '../layouts'
 import {
   AutosaveStatus,
@@ -60,6 +68,65 @@ function ResultLink({ to, children }: { to: string; children: ReactNode }) {
       {children}
       <Icon name="arrow_forward" size="sm" />
     </Link>
+  )
+}
+
+export function AdminInviteAcceptPage() {
+  const { search } = useLocation()
+  const { inviteId = '' } = useParams<{ inviteId: string }>()
+  const [email, setEmail] = useState('')
+  const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [message, setMessage] = useState('')
+  const eventId = new URLSearchParams(search).get('eventId') || EVENT_ID
+  const validLink = isAdminInviteEmailLink()
+
+  async function accept(event: FormEvent) {
+    event.preventDefault()
+    setStatus('loading')
+    setMessage('')
+    try {
+      await acceptAdminInviteEmailLink(email, inviteId, eventId)
+      setStatus('done')
+      setMessage('관리자 권한이 연결되었습니다. 운영 화면으로 이동합니다.')
+      window.setTimeout(() => window.location.assign(`/admin/events/${eventId}/control`), 500)
+    } catch (cause) {
+      setStatus('error')
+      setMessage(cause instanceof Error ? cause.message : '초대를 수락하지 못했습니다.')
+    }
+  }
+
+  return (
+    <PublicShell>
+      <main className="public-main narrow-page">
+        <Card padding="lg">
+          <CatIllustration size="lg" variant="welcome" />
+          <SectionHeader
+            description="초대받은 이메일 주소를 확인하면 행사 관리자 권한이 연결됩니다."
+            eyebrow="ADMIN INVITE"
+            title="관리자 초대 수락"
+            titleAs="h1"
+          />
+          {validLink ? (
+            <form className="form-grid" onSubmit={accept}>
+              <Field
+                autoComplete="email"
+                label="초대받은 이메일"
+                onChange={(event) => setEmail(event.target.value)}
+                required
+                type="email"
+                value={email}
+              />
+              <Button disabled={status === 'loading'} leadingIcon="verified_user" size="lg" type="submit">
+                {status === 'loading' ? '권한 확인 중' : '관리자 권한 수락'}
+              </Button>
+            </form>
+          ) : (
+            <OutcomeNote tone="warm">초대 링크가 유효하지 않거나 만료되었습니다. 행사 Owner에게 새 초대를 요청해주세요.</OutcomeNote>
+          )}
+          {message ? <p aria-live="polite" className={status === 'error' ? 'field-error' : ''}>{message}</p> : null}
+        </Card>
+      </main>
+    </PublicShell>
   )
 }
 
@@ -192,15 +259,18 @@ export function LandingPage() {
 export function JoinPage() {
   const navigate = useNavigate()
   const { roomCode = 'VIBE26' } = useParams()
-  const { dispatch, state } = usePlatform()
+  const { joinParticipant, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
   const [nickname, setNickname] = useState('')
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
+  const participantCount = state.participants.length ||
+    state.publishedSnapshot?.data.metrics.participantCount ||
+    0
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault()
-    const result = dispatch<Participant>({ type: 'JOIN_PARTICIPANT', input: { roomCode, nickname, pin } })
+    const result = await joinParticipant({ roomCode, nickname, pin })
     if (result.ok) {
       notify(result.notice ?? '입장했어요.')
       navigate(`/events/${EVENT_ID}/live`)
@@ -248,7 +318,7 @@ export function JoinPage() {
           <div className="join-art">
             <CatIllustration loading="eager" size="hero" variant="lobby" />
             <div className="join-art-copy">
-              <StatusChip label={`${state.participants.length} / ${state.room.capacity}명 입장`} status="live" />
+              <StatusChip label={`${participantCount} / ${state.room.capacity}명 입장`} status="live" />
               <h2>같은 방, 같은 흐름</h2>
               <p>주최자가 다음 페이지로 이동하면 이 화면도 함께 이동합니다.</p>
             </div>
@@ -272,15 +342,27 @@ export function ParticipantLivePage() {
   const {
     currentParticipant,
     currentSlide,
-    dispatch,
+    dispatchAsync,
+    savePrivateDraft,
     state,
     timerView,
   } = usePlatform()
   const { notify, renderToasts } = useNotices()
+  const answerDraftKey = `vibecoding.answer-drafts.${currentParticipant?.id ?? 'guest'}`
   const [answerDrafts, setAnswerDrafts] = usePersistentDraft<Record<string, string>>(
-    `vibecoding.answer-drafts.${currentParticipant?.id ?? 'guest'}`,
+    answerDraftKey,
     {},
   )
+  const [answerDraftBases, setAnswerDraftBases] = usePersistentDraft<Record<string, string>>(
+    `${answerDraftKey}.base-updated-at`,
+    {},
+  )
+  const [answerDraftRevisionBases, setAnswerDraftRevisionBases] = usePersistentDraft<Record<string, number>>(
+    `${answerDraftKey}.base-revision`,
+    {},
+  )
+  const [answerRebaseVersion, setAnswerRebaseVersion] = useState(0)
+  const savedAnswerDraftsRef = useRef<Record<string, string>>({})
   const [commentTarget, setCommentTarget] = useState<string | null>(null)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [commentDrafts, setCommentDrafts] = usePersistentDraft<Record<string, string>>(
@@ -301,33 +383,132 @@ export function ParticipantLivePage() {
         (answer) => answer.participantId === currentParticipant.id && answer.slideId === currentSlide.id,
       )
     : undefined
+  const submittedOwnAnswer = currentParticipant
+    ? state.answers.find(
+        (answer) => answer.participantId === currentParticipant.id &&
+          answer.slideId === currentSlide.id &&
+          answer.status === 'submitted',
+      )
+    : undefined
   const answerText = answerDrafts[currentSlide.id] ?? ownAnswer?.content ?? ''
+  const answerDraftConflict = currentSlide.id in answerDrafts
+    && answerDrafts[currentSlide.id] !== (ownAnswer?.content ?? '')
+    && answerDraftRevisionBases[currentSlide.id] !== (ownAnswer?.draftRevision ?? 0)
+  const answerDraftHasConflict = Object.entries(answerDrafts).some(([slideId, content]) => {
+    const remote = state.answers.find((answer) => (
+      answer.participantId === currentParticipant?.id && answer.slideId === slideId
+    ))
+    return content !== (remote?.content ?? '')
+      && answerDraftRevisionBases[slideId] !== (remote?.draftRevision ?? 0)
+  })
   const commentText = commentTarget ? (commentDrafts[commentTarget] ?? '') : ''
   const editingComment = state.comments.find((comment) => comment.id === editingCommentId)
   const editingCommentText = editingCommentId
     ? (commentEditDrafts[editingCommentId] ?? editingComment?.body ?? '')
     : ''
   const answerAutosave = useAutosave({
-    enabled: Boolean(
-      currentParticipant &&
-      answerText.trim() &&
-      !revealed &&
-      timerView.status !== 'complete'
-    ),
-    fingerprint: `${currentSlide.id}:${answerText}`,
-    save: () => {
-      if (!currentParticipant || !answerText.trim()) return false
-      return dispatch({
-        type: 'SAVE_ANSWER',
-        input: {
-          participantId: currentParticipant.id,
-          slideId: currentSlide.id,
-          content: answerText,
-          submit: false,
+    enabled: Boolean(currentParticipant && !answerDraftHasConflict),
+    // Server acknowledgements advance the stored base revision without being
+    // new edits. Keep them out of the fingerprint so the UI does not start a
+    // redundant debounce cycle after a successful save. An explicit conflict
+    // rebase increments answerRebaseVersion to request the intended retry.
+    fingerprint: JSON.stringify([answerDrafts, answerRebaseVersion]),
+    saveOnMount: Object.entries(answerDrafts).some(([slideId, content]) => {
+      const remote = state.answers.find((answer) => (
+        answer.participantId === currentParticipant?.id && answer.slideId === slideId
+      ))
+      return content !== (remote?.content ?? '')
+        && answerDraftBases[slideId] === (remote?.updatedAt ?? '')
+        && answerDraftRevisionBases[slideId] === (remote?.draftRevision ?? 0)
+    }),
+    save: async () => {
+      if (!currentParticipant) return false
+      const entries = Object.entries(answerDrafts).filter(
+        ([slideId, content]) => {
+          if (savedAnswerDraftsRef.current[slideId] === content) return false
+          const remote = state.answers.find((answer) => (
+            answer.participantId === currentParticipant.id && answer.slideId === slideId
+          ))
+          return content !== (remote?.content ?? '')
+            && answerDraftBases[slideId] === (remote?.updatedAt ?? '')
+            && answerDraftRevisionBases[slideId] === (remote?.draftRevision ?? 0)
         },
-      }).ok
+      )
+      const results = await Promise.all(entries.map(([slideId, content]) => {
+        const remote = state.answers.find((answer) => (
+          answer.participantId === currentParticipant.id && answer.slideId === slideId
+        ))
+        return dispatchAsync({
+          type: 'SAVE_ANSWER',
+          input: {
+            baseRevision: answerDraftRevisionBases[slideId] ?? remote?.draftRevision ?? 0,
+            participantId: currentParticipant.id,
+            slideId,
+            content,
+            submit: false,
+          },
+        })
+      }))
+      entries.forEach(([slideId, content], index) => {
+        if (results[index].ok) {
+          savedAnswerDraftsRef.current[slideId] = content
+        }
+      })
+      return results.every((result) => result.ok)
     },
   })
+  const commentAutosave = useAutosave({
+    enabled: Boolean(currentParticipant && commentTarget && commentText),
+    fingerprint: `${commentTarget ?? ''}:${commentText}`,
+    save: () => commentTarget
+      ? savePrivateDraft('comment', commentTarget, { body: commentText })
+      : false,
+  })
+  const commentEditAutosave = useAutosave({
+    enabled: Boolean(currentParticipant && editingCommentId && editingCommentText),
+    fingerprint: `${editingCommentId ?? ''}:${editingCommentText}`,
+    save: () => editingCommentId
+      ? savePrivateDraft('comment-edit', editingCommentId, { body: editingCommentText })
+      : false,
+  })
+
+  useEffect(() => {
+    setAnswerDraftBases((current) => {
+      let changed = false
+      const next = { ...current }
+      for (const [slideId, content] of Object.entries(answerDrafts)) {
+        const remote = state.answers.find((answer) => (
+          answer.participantId === currentParticipant?.id && answer.slideId === slideId
+        ))
+        if (remote?.content === content && next[slideId] !== remote.updatedAt) {
+          next[slideId] = remote.updatedAt
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+    setAnswerDraftRevisionBases((current) => {
+      let changed = false
+      const next = { ...current }
+      for (const [slideId, content] of Object.entries(answerDrafts)) {
+        const remote = state.answers.find((answer) => (
+          answer.participantId === currentParticipant?.id && answer.slideId === slideId
+        ))
+        const revision = remote?.draftRevision ?? 0
+        if (remote?.content === content && next[slideId] !== revision) {
+          next[slideId] = revision
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [
+    answerDrafts,
+    currentParticipant?.id,
+    setAnswerDraftBases,
+    setAnswerDraftRevisionBases,
+    state.answers,
+  ])
 
   if (!currentParticipant) {
     return (
@@ -345,11 +526,14 @@ export function ParticipantLivePage() {
   }
   const participant = currentParticipant
 
-  function saveAnswer(submit = true) {
+  async function saveAnswer(submit = true) {
     const ok = announceResult(
-      dispatch({
+      await dispatchAsync({
         type: 'SAVE_ANSWER',
         input: {
+          baseRevision: answerDraftRevisionBases[currentSlide.id]
+            ?? ownAnswer?.draftRevision
+            ?? 0,
           participantId: participant.id,
           slideId: currentSlide.id,
           content: answerText,
@@ -359,6 +543,7 @@ export function ParticipantLivePage() {
       notify,
     )
     if (ok) {
+      savedAnswerDraftsRef.current[currentSlide.id] = answerText.trim()
       answerAutosave.markSaved()
       setAnswerDrafts((current) => {
         if (!(currentSlide.id in current)) return current
@@ -369,11 +554,11 @@ export function ParticipantLivePage() {
     }
   }
 
-  function addComment(event: FormEvent) {
+  async function addComment(event: FormEvent) {
     event.preventDefault()
     if (!commentTarget) return
     const ok = announceResult(
-      dispatch({
+      await dispatchAsync({
         type: 'ADD_COMMENT',
         input: { participantId: participant.id, answerId: commentTarget, body: commentText },
       }),
@@ -389,10 +574,10 @@ export function ParticipantLivePage() {
     }
   }
 
-  function saveEditedComment() {
+  async function saveEditedComment() {
     if (!editingCommentId) return
     const ok = announceResult(
-      dispatch({
+      await dispatchAsync({
         type: 'UPDATE_COMMENT',
         input: { participantId: participant.id, commentId: editingCommentId, body: editingCommentText },
       }),
@@ -437,23 +622,55 @@ export function ParticipantLivePage() {
                   helpText={<AutosaveStatus phase={answerAutosave.phase} savedAt={answerAutosave.savedAt} />}
                   label="나의 개인 답변"
                   maxLength={1200}
-                  onChange={(event) => setAnswerDrafts((current) => ({
-                    ...current,
-                    [currentSlide.id]: event.target.value,
-                  }))}
+                  onChange={(event) => {
+                    if (!(currentSlide.id in answerDrafts)) {
+                      setAnswerDraftBases((current) => ({
+                        ...current,
+                        [currentSlide.id]: ownAnswer?.updatedAt ?? '',
+                      }))
+                      setAnswerDraftRevisionBases((current) => ({
+                        ...current,
+                        [currentSlide.id]: ownAnswer?.draftRevision ?? 0,
+                      }))
+                    }
+                    setAnswerDrafts((current) => ({
+                      ...current,
+                      [currentSlide.id]: event.target.value,
+                    }))
+                  }}
                   placeholder="관찰한 장면과 맥락을 구체적으로 적어보세요."
                   rows={7}
                   showCount
                   value={answerText}
                 />
+                {answerDraftConflict ? (
+                  <OutcomeNote tone="warm">
+                    이 기기의 초안보다 Firebase에 더 최신 답변이 있어 자동저장을 멈췄습니다.
+                    <Button
+                      onClick={() => {
+                        setAnswerDraftBases((current) => ({
+                          ...current,
+                          [currentSlide.id]: ownAnswer?.updatedAt ?? '',
+                        }))
+                        setAnswerDraftRevisionBases((current) => ({
+                          ...current,
+                          [currentSlide.id]: ownAnswer?.draftRevision ?? 0,
+                        }))
+                        setAnswerRebaseVersion((current) => current + 1)
+                      }}
+                      size="sm"
+                      variant="text"
+                    >내 초안으로 계속 편집</Button>
+                  </OutcomeNote>
+                ) : null}
                 <div className="split mobile-stack">
                   <span className="chip-row">
                     <Chip icon="lock" tone="info">공개 전 비공개</Chip>
                     {ownAnswer?.status === 'submitted' ? <Chip icon="check_circle" tone="success">제출됨</Chip> : null}
                   </span>
                   <MascotAction compactOnly label="입력 내용은 자동 저장하고 있어요" variant="autosave">
-                    <Button disabled={!answerText.trim() || timerView.status === 'complete'} onClick={() => saveAnswer(false)} variant="text">임시 저장</Button>
-                    <Button disabled={!answerText.trim() || timerView.status === 'complete'} leadingIcon="send" onClick={() => saveAnswer(true)}>개인 답변 제출</Button>
+                    <Button disabled={answerDraftConflict || !answerText.trim() || timerView.status === 'complete'} onClick={() => { void saveAnswer(false) }} variant="text">임시 저장</Button>
+                    <Button disabled={answerDraftConflict || !answerText.trim() || timerView.status === 'complete'} leadingIcon="send" onClick={() => { void saveAnswer(true) }}>개인 답변 제출</Button>
                   </MascotAction>
                 </div>
               </div>
@@ -467,13 +684,13 @@ export function ParticipantLivePage() {
           </div>
         </section>
 
-        {ownAnswer ? (
+        {submittedOwnAnswer ? (
           <ReviewThreadsPanel
             fieldOptions={[{ label: '단계 답변', value: '단계 답변' }]}
             mode="participant"
             participantId={participant.id}
-            quote={ownAnswer.content}
-            targetId={ownAnswer.id}
+            quote={submittedOwnAnswer.content}
+            targetId={submittedOwnAnswer.id}
             targetType="answer"
             title="주최자 피드백"
           />
@@ -519,7 +736,10 @@ export function ParticipantLivePage() {
                                   >수정</button>
                                   <button
                                     className="text-action danger-text"
-                                    onClick={() => announceResult(dispatch({ type: 'DELETE_COMMENT', input: { participantId: currentParticipant.id, commentId: comment.id } }), notify)}
+                                    onClick={() => {
+                                      void dispatchAsync({ type: 'DELETE_COMMENT', input: { participantId: currentParticipant.id, commentId: comment.id } })
+                                        .then((result) => announceResult(result, notify))
+                                    }}
                                     type="button"
                                   >삭제</button>
                                 </div>
@@ -546,7 +766,7 @@ export function ParticipantLivePage() {
                         autoFocus
                         label="댓글"
                         maxLength={500}
-                        helpText="등록 전 작성 내용은 이 기기에 자동 저장됩니다."
+                        helpText="등록 전 작성 내용은 이 기기와 Firebase에 자동 저장됩니다."
                         onChange={(event) => setCommentDrafts((current) => ({
                           ...current,
                           [answer.id]: event.target.value,
@@ -555,6 +775,7 @@ export function ParticipantLivePage() {
                         value={commentText}
                       />
                       <div className="button-row">
+                        <AutosaveStatus phase={commentAutosave.phase} savedAt={commentAutosave.savedAt} />
                         <Button onClick={() => setCommentTarget(null)} size="sm" variant="text">취소</Button>
                         <Button disabled={!commentText.trim()} size="sm" type="submit">등록</Button>
                       </div>
@@ -576,10 +797,10 @@ export function ParticipantLivePage() {
         actions={(
           <>
             <Button onClick={() => setEditingCommentId(null)} variant="text">취소</Button>
-            <Button disabled={!editingCommentText.trim()} leadingIcon="save" onClick={saveEditedComment}>수정 저장</Button>
+            <Button disabled={!editingCommentText.trim()} leadingIcon="save" onClick={() => { void saveEditedComment() }}>수정 저장</Button>
           </>
         )}
-        description="작성 중인 수정 내용은 이 기기에 자동 저장됩니다."
+        description="작성 중인 수정 내용은 이 기기와 Firebase에 자동 저장됩니다."
         onClose={() => setEditingCommentId(null)}
         open={Boolean(editingComment)}
         size="sm"
@@ -595,6 +816,7 @@ export function ParticipantLivePage() {
           rows={4}
           value={editingCommentText}
         />
+        <AutosaveStatus phase={commentEditAutosave.phase} savedAt={commentEditAutosave.savedAt} />
       </Dialog>
       {renderToasts()}
     </ParticipantShell>
@@ -603,12 +825,16 @@ export function ParticipantLivePage() {
 
 export function SubmissionPage() {
   const navigate = useNavigate()
-  const { currentParticipant, dispatch, state } = usePlatform()
+  const { currentParticipant, dispatchAsync, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
-  const existing = state.submissions.find((submission) => submission.participantId === currentParticipant?.id)
-  const [form, setForm] = usePersistentDraft(
-    `vibecoding.project-draft.${currentParticipant?.id ?? 'guest'}`,
-    {
+  const existingDraft = state.submissions.find(
+    (submission) => submission.participantId === currentParticipant?.id && submission.status === 'draft',
+  )
+  const submittedExisting = state.submissions.find(
+    (submission) => submission.participantId === currentParticipant?.id && submission.status === 'submitted',
+  )
+  const existing = existingDraft ?? submittedExisting
+  const projectFallback = {
     title: existing?.title ?? '',
     pitch: existing?.pitch ?? '',
     description: existing?.description ?? '',
@@ -616,37 +842,82 @@ export function SubmissionPage() {
     githubUrl: existing?.githubUrl ?? '',
     tags: existing?.tags.join(', ') ?? '',
     retrospective: existing?.retrospective ?? '',
-    },
+  }
+  const projectDraftKey = `vibecoding.project-draft.${currentParticipant?.id ?? 'guest'}`
+  const hasStoredProjectDraft = typeof window !== 'undefined'
+    && window.localStorage.getItem(projectDraftKey) !== null
+  const [form, setForm] = usePersistentDraft(
+    projectDraftKey,
+    projectFallback,
+  )
+  const [projectDraftBase, setProjectDraftBase] = usePersistentDraft(
+    `${projectDraftKey}.base-updated-at`,
+    hasStoredProjectDraft ? '__untracked__' : (existing?.updatedAt ?? ''),
+  )
+  const [projectDraftRevisionBase, setProjectDraftRevisionBase] = usePersistentDraft(
+    `${projectDraftKey}.base-revision`,
+    hasStoredProjectDraft ? -1 : (existingDraft?.draftRevision ?? 0),
+  )
+  const projectDirty = JSON.stringify(form) !== JSON.stringify(projectFallback)
+  const projectConflict = projectDirty && (
+    projectDraftBase !== (existing?.updatedAt ?? '')
+    || projectDraftRevisionBase !== (existingDraft?.draftRevision ?? 0)
   )
 
   const projectAutosave = useAutosave({
-    enabled: Boolean(currentParticipant && Object.values(form).some((value) => value.trim())),
-    fingerprint: JSON.stringify(form),
-    save: () => {
+    enabled: Boolean(currentParticipant && projectDirty && !projectConflict),
+    fingerprint: JSON.stringify([form, projectDraftRevisionBase]),
+    saveOnMount: Boolean(currentParticipant && projectDirty && !projectConflict),
+    save: async () => {
       if (!currentParticipant) return false
-      return dispatch<Submission>({
+      return (await dispatchAsync<Submission>({
         type: 'SUBMIT_PROJECT',
         input: {
+          baseRevision: projectDraftRevisionBase,
           participantId: currentParticipant.id,
           ...form,
           tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
           coverImage: '/assets/illustrations/cat-submission.png',
           submit: false,
         },
-      }).ok
+      })).ok
     },
   })
 
   function update(name: keyof typeof form, value: string) {
+    if (!projectDirty) {
+      setProjectDraftBase(existing?.updatedAt ?? '')
+      setProjectDraftRevisionBase(existingDraft?.draftRevision ?? 0)
+    }
     setForm((current) => ({ ...current, [name]: value }))
   }
 
-  function save(submit: boolean) {
+  useEffect(() => {
+    if (!projectDirty) {
+      if (projectDraftBase !== (existing?.updatedAt ?? '')) {
+        setProjectDraftBase(existing?.updatedAt ?? '')
+      }
+      if (projectDraftRevisionBase !== (existingDraft?.draftRevision ?? 0)) {
+        setProjectDraftRevisionBase(existingDraft?.draftRevision ?? 0)
+      }
+    }
+  }, [
+    existing?.updatedAt,
+    existingDraft?.draftRevision,
+    projectDirty,
+    projectDraftBase,
+    projectDraftRevisionBase,
+    setProjectDraftBase,
+    setProjectDraftRevisionBase,
+  ])
+
+  async function save(submit: boolean) {
     if (!currentParticipant) return
     const ok = announceResult(
-      dispatch<Submission>({
+      await dispatchAsync<Submission>({
         type: 'SUBMIT_PROJECT',
         input: {
+          baseRevision: projectDraftRevisionBase,
           participantId: currentParticipant.id,
           ...form,
           tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
@@ -693,6 +964,19 @@ export function SubmissionPage() {
         title="나의 최종 작품"
       >
         <OutcomeNote><strong>개인 제출 원칙</strong><br />참여자당 한 작품만 저장됩니다. 다시 제출하면 나의 기존 작품이 갱신됩니다.</OutcomeNote>
+        {projectConflict ? (
+          <OutcomeNote tone="warm">
+            이 기기의 초안보다 Firebase에 더 최신 작품 정보가 있어 자동저장을 멈췄습니다.
+            <Button
+              onClick={() => {
+                setProjectDraftBase(existing?.updatedAt ?? '')
+                setProjectDraftRevisionBase(existingDraft?.draftRevision ?? 0)
+              }}
+              size="sm"
+              variant="text"
+            >내 초안으로 계속 편집</Button>
+          </OutcomeNote>
+        ) : null}
         <Card padding="lg">
           <div className="form-grid">
             <Field label="작품명" maxLength={60} onChange={(event) => update('title', event.target.value)} placeholder="예: README 정원사" required value={form.title} />
@@ -707,8 +991,8 @@ export function SubmissionPage() {
             <div className="split mobile-stack">
               <AutosaveStatus phase={projectAutosave.phase} savedAt={projectAutosave.savedAt} />
               <MascotAction compactOnly label="작품 초안을 자동 저장하고 있어요" variant="autosave">
-                <Button onClick={() => save(false)} variant="text">임시 저장</Button>
-                <Button leadingIcon="rocket_launch" onClick={() => save(true)}>개인 작품 제출</Button>
+                <Button disabled={projectConflict} onClick={() => { void save(false) }} variant="text">임시 저장</Button>
+                <Button disabled={projectConflict} leadingIcon="rocket_launch" onClick={() => { void save(true) }}>개인 작품 제출</Button>
               </MascotAction>
             </div>
           </div>
@@ -724,7 +1008,7 @@ export function SubmissionPage() {
             mode="participant"
             participantId={currentParticipant.id}
             quote={existing.description}
-            targetId={existing.id}
+            targetId={currentParticipant.id}
             targetType="submission"
             title="작품 검토 피드백"
           />
@@ -736,12 +1020,14 @@ export function SubmissionPage() {
 }
 
 export function OrganizerControlPage() {
-  const { currentSlide, dispatch, state, timerView } = usePlatform()
+  const { currentSlide, dispatchAsync, state, timerView } = usePlatform()
   const { notify, renderToasts } = useNotices()
   const [reviewAnswerId, setReviewAnswerId] = useState<string | null>(null)
   const revealed = Boolean(state.live.answersRevealedBySlide[currentSlide.id])
   const commentsEnabled = Boolean(state.live.commentsEnabledBySlide[currentSlide.id])
-  const onlineCount = state.participants.filter((participant) => participant.status === 'online').length
+  const recentlyActiveCount = state.participants.filter(
+    (participant) => Date.now() - Date.parse(participant.lastSeenAt) < 15 * 60_000,
+  ).length
   const stageAnswerCount = state.answers.filter((answer) => answer.slideId === currentSlide.id && answer.status === 'submitted').length
   const stageAnswers = state.answers.filter((answer) => answer.slideId === currentSlide.id && answer.status === 'submitted')
   const submittedCount = state.submissions.filter((submission) => submission.status === 'submitted').length
@@ -751,8 +1037,8 @@ export function OrganizerControlPage() {
     setReviewAnswerId(null)
   }, [currentSlide.id])
 
-  function run(command: Parameters<typeof dispatch>[0]) {
-    announceResult(dispatch(command), notify)
+  function run(command: Parameters<typeof dispatchAsync>[0]) {
+    void dispatchAsync(command).then((result) => announceResult(result, notify))
   }
 
   function move(offset: number) {
@@ -769,11 +1055,12 @@ export function OrganizerControlPage() {
         title="지금 모두가 보고 있는 장면"
       >
         <div className="grid four">
-          <StatCard detail={`정원 ${state.room.capacity}명`} icon="groups" label="입장 참여자" trend={`${onlineCount}명 온라인`} value={`${state.participants.length}명`} />
+          <StatCard detail={`정원 ${state.room.capacity}명`} icon="groups" label="입장 참여자" trend={`${recentlyActiveCount}명 최근 활동`} value={`${state.participants.length}명`} />
           <StatCard detail="현재 단계" icon="edit_note" label="개인 답변" trend={`${stageAnswerCount}개 수합`} trendTone="primary" value={`${Math.round((stageAnswerCount / state.participants.length) * 100)}%`} />
           <StatCard detail="공개 후 댓글" icon="forum" label="댓글" trend={commentsEnabled ? '작성 열림' : '잠김'} trendTone={commentsEnabled ? 'success' : 'neutral'} value={`${state.comments.length}개`} />
           <StatCard detail="모두 개인 작품" icon="rocket_launch" label="최종 제출" trend={`${state.participants.length - submittedCount}명 남음`} trendTone="warning" value={`${submittedCount}개`} />
         </div>
+        <OutcomeNote><strong>입장 마감 안내</strong><br />참여자 입장을 확인한 뒤 첫 타이머를 시작하거나 재개하면 새 닉네임 등록은 마감됩니다. 기존 참여자의 PIN 재입장은 계속 가능합니다.</OutcomeNote>
 
         <div className="live-console">
           <section className="stage-card" aria-live="polite">
@@ -898,16 +1185,29 @@ export function OrganizerControlPage() {
 type OperationsSection = 'participants' | 'submissions' | 'admins' | 'portability'
 
 export function OrganizerOperationsPage({ section }: { section: OperationsSection }) {
-  const { dispatch, state } = usePlatform()
+  const { dispatchAsync, revealParticipantPin, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
   const [query, setQuery] = useState('')
   const [pinParticipant, setPinParticipant] = useState<Participant | null>(null)
   const [pinReason, setPinReason] = useState('재입장 지원')
   const [pinVisible, setPinVisible] = useState(false)
+  const [revealedPin, setRevealedPin] = useState('')
+  const [pinLoading, setPinLoading] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [reviewSubmissionId, setReviewSubmissionId] = useState<string | null>(null)
+  const [exhibitionUpdating, setExhibitionUpdating] = useState(false)
   const snapshot = state.publishedSnapshot
-  const reviewSubmission = state.submissions.find((submission) => submission.id === reviewSubmissionId)
+  const submissionCards = state.participants.flatMap((participant) => {
+    const draft = state.submissions.find((submission) => (
+      submission.participantId === participant.id && submission.status === 'draft'
+    ))
+    const submitted = state.submissions.find((submission) => (
+      submission.participantId === participant.id && submission.status === 'submitted'
+    ))
+    const project = draft ?? submitted
+    return project ? [{ participant, project, targetId: participant.id }] : []
+  })
+  const reviewSubmission = submissionCards.find((item) => item.targetId === reviewSubmissionId)
 
   useEffect(() => {
     if (!pinVisible) return
@@ -917,6 +1217,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
 
   function closePinDialog() {
     setPinVisible(false)
+    setRevealedPin('')
     setPinParticipant(null)
   }
 
@@ -929,10 +1230,34 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
 
   const filtered = state.participants.filter((participant) => participant.nickname.includes(query.trim()))
 
-  function invite(event: FormEvent) {
+  async function invite(event: FormEvent) {
     event.preventDefault()
-    const ok = announceResult(dispatch({ type: 'INVITE_ADMIN', email: inviteEmail }), notify)
+    const ok = announceResult(await dispatchAsync({ type: 'INVITE_ADMIN', email: inviteEmail }), notify)
     if (ok) setInviteEmail('')
+  }
+
+  async function revealPin() {
+    if (!pinParticipant || !pinReason.trim()) return
+    setPinLoading(true)
+    const result = await revealParticipantPin(pinParticipant.id, pinReason)
+    if (announceResult(result, notify)) {
+      setRevealedPin(result.ok ? result.value : '')
+      setPinVisible(true)
+    }
+    setPinLoading(false)
+  }
+
+  async function setExhibitionPublished() {
+    if (exhibitionUpdating) return
+    setExhibitionUpdating(true)
+    try {
+      announceResult(await dispatchAsync({
+        type: 'SET_EXHIBITION_PUBLISHED',
+        published: !state.exhibitionPublished,
+      }), notify)
+    } finally {
+      setExhibitionUpdating(false)
+    }
   }
 
   async function copyEmbed() {
@@ -954,7 +1279,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
           <>
             <div className="grid three">
               <StatCard icon="groups" label="등록" value={`${state.participants.length} / ${state.room.capacity}`} />
-              <StatCard icon="wifi" label="온라인" trend="실시간 상태" value={`${state.participants.filter((participant) => participant.status === 'online').length}명`} />
+              <StatCard icon="history" label="최근 활동" trend="마지막 저장 기준" value={`${state.participants.filter((participant) => Date.now() - Date.parse(participant.lastSeenAt) < 15 * 60_000).length}명`} />
               <StatCard icon="assignment_turned_in" label="개인 제출" value={`${state.submissions.filter((submission) => submission.status === 'submitted').length}명`} />
             </div>
             <OutcomeNote tone="warm"><strong>PIN 조회 정책</strong><br />재입장 지원이 필요한 경우에만 조회 사유를 입력하세요. 한 번에 한 명의 PIN을 30초 동안 확인할 수 있습니다.</OutcomeNote>
@@ -970,8 +1295,8 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
                     <div className="list-item" key={participant.id}>
                       <span className="avatar" style={{ background: `${participant.accent}22`, color: participant.accent }}>{participant.nickname.slice(0, 1)}</span>
                       <span className="list-main"><span className="list-title">{participant.nickname}</span><span className="list-subtitle">PIN · •••• · {submission?.status === 'submitted' ? '작품 제출' : '미제출'}</span></span>
-                      <Chip tone={participant.status === 'online' ? 'success' : 'neutral'}>{participant.status === 'online' ? '온라인' : '오프라인'}</Chip>
-                      <Button onClick={() => { setPinParticipant(participant); setPinVisible(false) }} size="sm" variant="outlined">PIN 확인</Button>
+                      <Chip tone={participant.status === 'online' ? 'success' : 'neutral'}>{participant.status === 'online' ? '최근 활동' : '자리 비움'}</Chip>
+                      <Button onClick={() => { setPinParticipant(participant); setPinVisible(false); setRevealedPin('') }} size="sm" variant="outlined">PIN 확인</Button>
                     </div>
                   )
                 })}
@@ -996,21 +1321,20 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
             </div>
             <div className="split mobile-stack">
               <OutcomeNote>전시 상태를 바꾸면 새로운 공개 리비전이 만들어져 대시보드와 README도 같은 상태를 사용합니다.</OutcomeNote>
-              <Button leadingIcon={state.exhibitionPublished ? 'visibility_off' : 'visibility'} onClick={() => announceResult(dispatch({ type: 'SET_EXHIBITION_PUBLISHED', published: !state.exhibitionPublished }), notify)} variant={state.exhibitionPublished ? 'outlined' : 'filled'}>
-                전시 {state.exhibitionPublished ? '회수' : '공개'}
+              <Button disabled={exhibitionUpdating} leadingIcon={state.exhibitionPublished ? 'visibility_off' : 'visibility'} onClick={() => { void setExhibitionPublished() }} variant={state.exhibitionPublished ? 'outlined' : 'filled'}>
+                {exhibitionUpdating ? '전시 상태 반영 중…' : `전시 ${state.exhibitionPublished ? '회수' : '공개'}`}
               </Button>
             </div>
-            {state.submissions.length ? (
+            {submissionCards.length ? (
               <div className="exhibition-grid">
-                {state.submissions.map((submission) => {
-                  const maker = state.participants.find((participant) => participant.id === submission.participantId)
-                  const reviewCount = state.reviewThreads.filter((thread) => thread.targetType === 'submission' && thread.targetId === submission.id).length
+                {submissionCards.map(({ participant, project, targetId }) => {
+                  const reviewCount = state.reviewThreads.filter((thread) => thread.targetType === 'submission' && thread.targetId === targetId).length
                   return (
                     <ProjectCard
-                      key={submission.id}
-                      maker={maker?.nickname ?? '참가자'}
-                      onReview={() => setReviewSubmissionId((current) => current === submission.id ? null : submission.id)}
-                      project={submission}
+                      key={targetId}
+                      maker={participant.nickname}
+                      onReview={() => setReviewSubmissionId((current) => current === targetId ? null : targetId)}
+                      project={project}
                       reviewCount={reviewCount}
                     />
                   )
@@ -1032,10 +1356,10 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
                   { label: '제작 회고', value: '제작 회고' },
                 ]}
                 mode="organizer"
-                quote={reviewSubmission.description}
-                targetId={reviewSubmission.id}
+                quote={reviewSubmission.project.description}
+                targetId={reviewSubmission.targetId}
                 targetType="submission"
-                title={`${state.participants.find((participant) => participant.id === reviewSubmission.participantId)?.nickname ?? '참여자'}님의 작품 검토`}
+                title={`${reviewSubmission.participant.nickname}님의 작품 검토`}
               />
             ) : null}
           </>
@@ -1050,7 +1374,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
                   <Field label="이메일 주소" onChange={(event) => setInviteEmail(event.target.value)} placeholder="admin@example.com" required type="email" value={inviteEmail} />
                   <Button leadingIcon="person_add" type="submit">초대 보내기</Button>
                 </form>
-                <OutcomeNote tone="warm">실제 메일은 발송되지 않습니다. Firebase Authentication과 Functions 연결 단계에서 구현합니다.</OutcomeNote>
+                <OutcomeNote>Firebase Authentication의 일회용 로그인 링크가 발송되며, 초대받은 이메일만 권한을 수락할 수 있습니다.</OutcomeNote>
               </Card>
               <Card padding="lg">
                 <SectionHeader description="Owner 1명과 초대된 관리자" eyebrow="ACCESS LIST" title="현재 권한" titleAs="h2" />
@@ -1096,7 +1420,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
         actions={
           <>
             <Button onClick={closePinDialog} variant="text">닫기</Button>
-            <Button disabled={!pinReason.trim()} leadingIcon="visibility" onClick={() => { setPinVisible(true); notify('PIN을 30초 동안 표시합니다.', 'warning') }} variant="danger">PIN 확인</Button>
+            <Button disabled={!pinReason.trim() || pinLoading} leadingIcon="visibility" onClick={() => { void revealPin() }} variant="danger">{pinLoading ? '확인 중…' : 'PIN 확인'}</Button>
           </>
         }
         description="재입장 지원을 위해 한 명의 PIN만 30초 동안 확인합니다."
@@ -1106,7 +1430,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
         title={`${pinParticipant?.nickname ?? ''}님의 재입장 지원`}
       >
         {pinVisible ? (
-          <div className="pin-reveal"><span>{pinParticipant?.pin}</span><p>보안을 위해 30초 뒤 자동으로 가려집니다.</p></div>
+          <div className="pin-reveal"><span>{revealedPin}</span><p>보안을 위해 30초 뒤 자동으로 가려집니다. 조회 사유는 Firebase 감사 기록에 남습니다.</p></div>
         ) : (
           <Field label="조회 사유" onChange={(event) => setPinReason(event.target.value)} required value={pinReason} />
         )}
@@ -1118,51 +1442,191 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
 
 export function SynthesisPage() {
   const navigate = useNavigate()
-  const { dispatch, state } = usePlatform()
+  const { dispatchAsync, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
-  const [summary, setSummary] = usePersistentDraft(
-    `vibecoding.synthesis-draft.${state.room.id}`,
-    state.synthesis.organizerSummary,
+  const synthesisDraftKey = `vibecoding.synthesis-draft.v2.${state.room.id}`
+  const [summaryDraft, setSummaryDraft] = usePersistentDraft(
+    synthesisDraftKey,
+    {
+      baseRevision: state.synthesis.revision,
+      content: state.synthesis.organizerSummary,
+    },
   )
+  const summary = summaryDraft.content
+  const summaryDirty = summary !== state.synthesis.organizerSummary
+  const summaryConflict = summaryDirty
+    && summaryDraft.baseRevision < state.synthesis.revision
   const [stageFilter, setStageFilter] = useState(state.slides[0].id)
+  const [selectedHighlightIds, setSelectedHighlightIds] = useState(state.synthesis.highlightAnswerIds)
+  const [selectedThemeIds, setSelectedThemeIds] = useState(state.synthesis.themeIds)
+  const [selectedNicknamePolicy, setSelectedNicknamePolicy] = useState(state.synthesis.nicknamePolicy)
+  const [publishing, setPublishing] = useState(false)
+  const highlightIdsRef = useRef(selectedHighlightIds)
+  const themeIdsRef = useRef(selectedThemeIds)
+  const nicknamePolicyRef = useRef(selectedNicknamePolicy)
+  const synthesisRevisionRef = useRef(state.synthesis.revision)
+  const latestSynthesisRef = useRef(state.synthesis)
+  latestSynthesisRef.current = state.synthesis
+  const synthesisPendingRef = useRef(0)
+  const failedSynthesisFieldsRef = useRef(new Set<keyof SynthesisPatch>())
+  const synthesisQueueRef = useRef<Promise<boolean>>(Promise.resolve(true))
   const snapshot = state.publishedSnapshot
   const stageAnswers = state.answers.filter((answer) => answer.slideId === stageFilter && answer.status === 'submitted')
-  const summaryAutosave = useAutosave({
-    enabled: summary !== state.synthesis.organizerSummary,
-    fingerprint: summary,
-    save: () => dispatch({ type: 'UPDATE_SYNTHESIS', input: { organizerSummary: summary } }).ok,
-  })
 
-  function saveSummary() {
-    const ok = announceResult(dispatch({ type: 'UPDATE_SYNTHESIS', input: { organizerSummary: summary } }), notify)
-    if (ok) summaryAutosave.markSaved()
+  type SynthesisPatch = Omit<UpdateSynthesisInput, 'expectedRevision'>
+
+  function queueSynthesisUpdate(
+    input: SynthesisPatch,
+    showNotice = true,
+  ): Promise<boolean> {
+    const fields = Object.keys(input) as (keyof SynthesisPatch)[]
+    synthesisPendingRef.current += 1
+    const operation = synthesisQueueRef.current.then(async () => {
+      const expectedRevision = synthesisRevisionRef.current
+      const result = await dispatchAsync<{ revision: number }>({
+        type: 'UPDATE_SYNTHESIS',
+        input: {
+          ...input,
+          expectedRevision,
+        },
+      })
+      if (!result.ok) {
+        fields.forEach((field) => {
+          if (field === 'organizerSummary') failedSynthesisFieldsRef.current.add(field)
+          else failedSynthesisFieldsRef.current.delete(field)
+        })
+        const latest = latestSynthesisRef.current
+        synthesisRevisionRef.current = latest.revision
+        highlightIdsRef.current = latest.highlightAnswerIds
+        themeIdsRef.current = latest.themeIds
+        nicknamePolicyRef.current = latest.nicknamePolicy
+        setSelectedHighlightIds(latest.highlightAnswerIds)
+        setSelectedThemeIds(latest.themeIds)
+        setSelectedNicknamePolicy(latest.nicknamePolicy)
+        notify(result.error.message, 'danger')
+        return failedSynthesisFieldsRef.current.size === 0
+      }
+      if (Number.isInteger(result.value.revision)) {
+        synthesisRevisionRef.current = result.value.revision
+        setSummaryDraft((current) => current.baseRevision === expectedRevision
+          ? { ...current, baseRevision: result.value.revision }
+          : current)
+      }
+      fields.forEach((field) => failedSynthesisFieldsRef.current.delete(field))
+      if (showNotice && result.notice) notify(result.notice, 'success')
+      return failedSynthesisFieldsRef.current.size === 0
+    }).finally(() => {
+      synthesisPendingRef.current -= 1
+    })
+    synthesisQueueRef.current = operation
+    return operation
   }
 
+  const summaryAutosave = useAutosave({
+    enabled: summaryDirty && !summaryConflict,
+    fingerprint: summary,
+    save: async () => {
+      const content = summary
+      const ok = await queueSynthesisUpdate({ organizerSummary: content }, false)
+      if (ok) {
+        setSummaryDraft((current) => current.content === content
+          ? { ...current, baseRevision: synthesisRevisionRef.current }
+          : current)
+      }
+      return ok
+    },
+    saveOnMount: summaryDirty && !summaryConflict,
+  })
+  const markSummaryPhase = summaryAutosave.markPhase
+
+  async function saveSummary() {
+    if (summaryConflict) {
+      notify('다른 관리자의 최신 요약을 확인하고 내용을 다시 편집한 뒤 저장해주세요.', 'danger')
+      return
+    }
+    const ok = await summaryAutosave.flush()
+    if (ok) notify('정리 세션 내용을 저장했습니다.', 'success')
+  }
+
+  useEffect(() => {
+    if (synthesisPendingRef.current > 0 || publishing) return
+    synthesisRevisionRef.current = state.synthesis.revision
+    highlightIdsRef.current = state.synthesis.highlightAnswerIds
+    themeIdsRef.current = state.synthesis.themeIds
+    nicknamePolicyRef.current = state.synthesis.nicknamePolicy
+    setSelectedHighlightIds(state.synthesis.highlightAnswerIds)
+    setSelectedThemeIds(state.synthesis.themeIds)
+    setSelectedNicknamePolicy(state.synthesis.nicknamePolicy)
+  }, [
+    publishing,
+    state.synthesis.highlightAnswerIds,
+    state.synthesis.nicknamePolicy,
+    state.synthesis.revision,
+    state.synthesis.themeIds,
+  ])
+
+  useEffect(() => {
+    if (!summaryDirty && summaryDraft.baseRevision !== state.synthesis.revision) {
+      setSummaryDraft((current) => ({
+        ...current,
+        baseRevision: state.synthesis.revision,
+      }))
+    }
+  }, [setSummaryDraft, state.synthesis.revision, summaryDirty, summaryDraft.baseRevision])
+
+  useEffect(() => {
+    if (summaryConflict) markSummaryPhase('conflict')
+  }, [markSummaryPhase, summaryConflict])
+
   function toggleHighlight(answerId: string) {
-    const selected = state.synthesis.highlightAnswerIds.includes(answerId)
+    const selected = highlightIdsRef.current.includes(answerId)
     const highlightAnswerIds = selected
-      ? state.synthesis.highlightAnswerIds.filter((id) => id !== answerId)
-      : [...state.synthesis.highlightAnswerIds, answerId]
-    announceResult(dispatch({ type: 'UPDATE_SYNTHESIS', input: { highlightAnswerIds } }), notify)
+      ? highlightIdsRef.current.filter((id) => id !== answerId)
+      : [...highlightIdsRef.current, answerId]
+    highlightIdsRef.current = highlightAnswerIds
+    setSelectedHighlightIds(highlightAnswerIds)
+    void queueSynthesisUpdate({ highlightAnswerIds })
   }
 
   function toggleTheme(themeId: string) {
-    const selected = state.synthesis.themeIds.includes(themeId)
+    const selected = themeIdsRef.current.includes(themeId)
     const themeIds = selected
-      ? state.synthesis.themeIds.filter((id) => id !== themeId)
-      : [...state.synthesis.themeIds, themeId]
-    announceResult(dispatch({ type: 'UPDATE_SYNTHESIS', input: { themeIds } }), notify)
+      ? themeIdsRef.current.filter((id) => id !== themeId)
+      : [...themeIdsRef.current, themeId]
+    themeIdsRef.current = themeIds
+    setSelectedThemeIds(themeIds)
+    void queueSynthesisUpdate({ themeIds })
   }
 
-  function publish() {
-    const result = dispatch({ type: 'PUBLISH_SYNTHESIS' })
-    if (announceResult(result, notify)) window.setTimeout(() => navigate(`/dashboards/${PUBLIC_SLUG}`), 450)
+  async function publish() {
+    if (publishing) return
+    setPublishing(true)
+    try {
+      if (summaryConflict) {
+        notify('다른 관리자가 저장한 최신 요약과 충돌합니다. 내용을 확인한 뒤 다시 발행해주세요.', 'danger')
+        return
+      }
+      const summarySaved = await summaryAutosave.flush()
+      const queuedFieldsSaved = await synthesisQueueRef.current
+      if (
+        !summarySaved
+        || !queuedFieldsSaved
+        || failedSynthesisFieldsRef.current.size > 0
+      ) {
+        notify('정리 세션 저장을 확인한 뒤 다시 발행해주세요.', 'danger')
+        return
+      }
+      const result = await dispatchAsync({ type: 'PUBLISH_SYNTHESIS' })
+      if (announceResult(result, notify)) window.setTimeout(() => navigate(`/dashboards/${PUBLIC_SLUG}`), 450)
+    } finally {
+      setPublishing(false)
+    }
   }
 
   return (
     <OrganizerShell>
       <AdminLayout
-        actions={<Button leadingIcon="publish" onClick={publish}>새 리비전 발행</Button>}
+        actions={<Button disabled={publishing} leadingIcon="publish" onClick={() => { void publish() }}>{publishing ? '발행 준비 중…' : '새 리비전 발행'}</Button>}
         description="각 단계의 개인 답변을 주제와 하이라이트로 묶고, 외부에서 이어 쓸 수 있는 하나의 공개 리비전을 만듭니다."
         eyebrow={`SYNTHESIS · REVISION ${snapshot?.revision ?? 0}`}
         title="흩어진 답을 하나의 행사 이야기로"
@@ -1170,18 +1634,35 @@ export function SynthesisPage() {
         <div className="grid four">
           <StatCard icon="groups" label="참여자" value={`${state.participants.length}명`} />
           <StatCard icon="edit_note" label="제출 답변" value={`${state.answers.filter((answer) => answer.status === 'submitted').length}개`} />
-          <StatCard icon="category" label="공개 테마" value={`${state.synthesis.themeIds.length}개`} />
-          <StatCard icon="push_pin" label="하이라이트" value={`${state.synthesis.highlightAnswerIds.length}개`} />
+          <StatCard icon="category" label="공개 테마" value={`${selectedThemeIds.length}개`} />
+          <StatCard icon="push_pin" label="하이라이트" value={`${selectedHighlightIds.length}개`} />
         </div>
 
         <div className="synthesis-layout">
           <div className="stack">
             <Card padding="lg">
               <SectionHeader description="원문을 수정하지 않고 주최자의 해석을 별도로 기록합니다." eyebrow="01 · ORGANIZER SUMMARY" title="전체 행사 요약" titleAs="h2" />
-              <Textarea helpText={<AutosaveStatus phase={summaryAutosave.phase} savedAt={summaryAutosave.savedAt} />} label="주최자 요약" maxLength={4000} onChange={(event) => setSummary(event.target.value)} rows={9} showCount value={summary} />
+              <Textarea
+                disabled={publishing}
+                helpText={<AutosaveStatus phase={summaryAutosave.phase} savedAt={summaryAutosave.savedAt} />}
+                label="주최자 요약"
+                maxLength={4000}
+                onChange={(event) => setSummaryDraft({
+                  baseRevision: state.synthesis.revision,
+                  content: event.target.value,
+                })}
+                rows={9}
+                showCount
+                value={summary}
+              />
+              {summaryConflict ? (
+                <OutcomeNote tone="warm">
+                  다른 관리자가 더 최신 요약을 저장했습니다. 최신 내용을 확인한 뒤 이 입력란을 다시 편집하면 안전하게 저장할 수 있습니다.
+                </OutcomeNote>
+              ) : null}
               <div className="split mobile-stack synthesis-save">
                 <span className="small-text muted">저장 후에도 공개 화면은 다시 발행하기 전까지 바뀌지 않습니다.</span>
-                <Button leadingIcon="save" onClick={saveSummary} variant="tonal">정리 저장</Button>
+                <Button disabled={publishing} leadingIcon="save" onClick={() => { void saveSummary() }} variant="tonal">정리 저장</Button>
               </div>
             </Card>
 
@@ -1195,9 +1676,9 @@ export function SynthesisPage() {
               <div className="stack compact synthesis-answers">
                 {stageAnswers.map((answer) => {
                   const participant = state.participants.find((item) => item.id === answer.participantId)
-                  const selected = state.synthesis.highlightAnswerIds.includes(answer.id)
+                  const selected = selectedHighlightIds.includes(answer.id)
                   return (
-                    <button aria-pressed={selected} className={`synthesis-answer${selected ? ' selected' : ''}`} key={answer.id} onClick={() => toggleHighlight(answer.id)} type="button">
+                    <button aria-pressed={selected} className={`synthesis-answer${selected ? ' selected' : ''}`} disabled={publishing} key={answer.id} onClick={() => toggleHighlight(answer.id)} type="button">
                       <span className="avatar">{participant?.nickname.slice(0, 1)}</span>
                       <span><strong>{participant?.nickname}</strong><span>{answer.content}</span></span>
                       <Icon filled={selected} name={selected ? 'push_pin' : 'keep'} />
@@ -1213,9 +1694,9 @@ export function SynthesisPage() {
               <SectionHeader description="발행할 주제 묶음을 선택합니다." eyebrow="03 · THEMES" title="공개 테마" titleAs="h2" />
               <div className="stack compact">
                 {state.themes.map((theme) => {
-                  const selected = state.synthesis.themeIds.includes(theme.id)
+                  const selected = selectedThemeIds.includes(theme.id)
                   return (
-                    <button aria-pressed={selected} className={`theme-toggle${selected ? ' selected' : ''}`} key={theme.id} onClick={() => toggleTheme(theme.id)} type="button">
+                    <button aria-pressed={selected} className={`theme-toggle${selected ? ' selected' : ''}`} disabled={publishing} key={theme.id} onClick={() => toggleTheme(theme.id)} type="button">
                       <span className="theme-color" style={{ background: theme.color }} />
                       <span><strong>{theme.label}</strong><small>{theme.description}</small></span>
                       <Icon name={selected ? 'check_circle' : 'circle'} />
@@ -1227,7 +1708,17 @@ export function SynthesisPage() {
 
             <Card padding="lg" tone="subtle">
               <SectionHeader description="외부 projection을 만들 때 한 번만 적용됩니다." eyebrow="PRIVACY" title="닉네임 공개 정책" titleAs="h2" />
-              <Select label="공개 대시보드 작성자" onChange={(event) => announceResult(dispatch({ type: 'UPDATE_SYNTHESIS', input: { nicknamePolicy: event.target.value as 'nickname' | 'anonymous' } }), notify)} value={state.synthesis.nicknamePolicy}>
+              <Select
+                disabled={publishing}
+                label="공개 대시보드 작성자"
+                onChange={(event) => {
+                  const nicknamePolicy = event.target.value as 'nickname' | 'anonymous'
+                  nicknamePolicyRef.current = nicknamePolicy
+                  setSelectedNicknamePolicy(nicknamePolicy)
+                  void queueSynthesisUpdate({ nicknamePolicy })
+                }}
+                value={selectedNicknamePolicy}
+              >
                 <option value="nickname">닉네임 표시</option>
                 <option value="anonymous">모두 익명화</option>
               </Select>
@@ -1244,7 +1735,7 @@ export function SynthesisPage() {
               <Chip tone="info">현재 공개 R{snapshot?.revision ?? 0}</Chip>
               <h3>수정본을 외부에 반영할까요?</h3>
               <p>발행 시 정제된 불변 스냅샷을 만들고 대시보드와 모든 내보내기가 이 리비전만 읽습니다.</p>
-              <Button fullWidth leadingIcon="publish" onClick={publish}>새 리비전 발행</Button>
+              <Button disabled={publishing} fullWidth leadingIcon="publish" onClick={() => { void publish() }}>새 리비전 발행</Button>
             </Card>
           </aside>
         </div>

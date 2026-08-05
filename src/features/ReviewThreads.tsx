@@ -2,8 +2,10 @@ import { useMemo, type FormEvent } from 'react'
 import { usePlatform } from '../app/PlatformProvider'
 import type { ReviewThread, ReviewTargetType } from '../domain/models'
 import { usePersistentDraft } from '../platform/usePersistentDraft'
+import { useAutosave } from '../platform/useAutosave'
 import {
   Button,
+  AutosaveStatus,
   Card,
   CatIllustration,
   Chip,
@@ -46,14 +48,20 @@ function ThreadCard({
   participantId?: string
   thread: ReviewThread
 }) {
-  const { dispatch, state } = usePlatform()
+  const { dispatchAsync, savePrivateDraft, state } = usePlatform()
   const draftKey = `vibecoding.review-reply.${thread.id}.${mode}.${participantId ?? 'organizer'}`
   const [reply, setReply, clearReply] = usePersistentDraft(draftKey, '')
+  const replyAutosave = useAutosave({
+    enabled: Boolean(reply),
+    fingerprint: reply,
+    save: () => savePrivateDraft('review-reply', thread.id, { body: reply }),
+    saveOnMount: Boolean(reply),
+  })
 
-  function addReply(event: FormEvent) {
+  async function addReply(event: FormEvent) {
     event.preventDefault()
     const ok = announceResult(
-      dispatch({
+      await dispatchAsync({
         type: 'ADD_REVIEW_REPLY',
         input: {
           threadId: thread.id,
@@ -67,9 +75,9 @@ function ThreadCard({
     if (ok) clearReply()
   }
 
-  function toggleStatus() {
+  async function toggleStatus() {
     announceResult(
-      dispatch({
+      await dispatchAsync({
         type: 'SET_REVIEW_THREAD_STATUS',
         input: {
           threadId: thread.id,
@@ -107,7 +115,7 @@ function ThreadCard({
       </div>
       <form className="review-reply" onSubmit={addReply}>
         <Textarea
-          helpText="작성 중인 답글은 이 기기에 자동 저장됩니다."
+          helpText="작성 중인 답글은 이 기기와 Firebase에 자동 저장됩니다."
           label="답글"
           maxLength={1000}
           onChange={(event) => setReply(event.target.value)}
@@ -116,7 +124,8 @@ function ThreadCard({
           value={reply}
         />
         <div className="review-thread__actions">
-          <Button leadingIcon={thread.status === 'open' ? 'check' : 'refresh'} onClick={toggleStatus} size="sm" type="button" variant="text">
+          <AutosaveStatus phase={replyAutosave.phase} savedAt={replyAutosave.savedAt} />
+          <Button leadingIcon={thread.status === 'open' ? 'check' : 'refresh'} onClick={() => { void toggleStatus() }} size="sm" type="button" variant="text">
             {thread.status === 'open' ? '해결' : '다시 열기'}
           </Button>
           <Button disabled={!reply.trim()} leadingIcon="reply" size="sm" type="submit">답글</Button>
@@ -135,12 +144,18 @@ export function ReviewThreadsPanel({
   targetType,
   title,
 }: ReviewThreadsPanelProps) {
-  const { state, dispatch } = usePlatform()
+  const { state, dispatchAsync, savePrivateDraft } = usePlatform()
   const { notify, renderToasts } = useNotices()
   const composerKey = `vibecoding.review-composer.${targetType}.${targetId}`
   const [composer, setComposer, clearComposer] = usePersistentDraft(composerKey, {
     body: '',
     field: fieldOptions[0]?.value ?? '전체',
+  })
+  const composerAutosave = useAutosave({
+    enabled: mode === 'organizer' && Boolean(composer.body),
+    fingerprint: JSON.stringify(composer),
+    save: () => savePrivateDraft('review-composer', `${targetType}-${targetId}`, composer),
+    saveOnMount: mode === 'organizer' && Boolean(composer.body),
   })
   const threads = useMemo(
     () => state.reviewThreads
@@ -149,10 +164,10 @@ export function ReviewThreadsPanel({
     [state.reviewThreads, targetId, targetType],
   )
 
-  function createThread(event: FormEvent) {
+  async function createThread(event: FormEvent) {
     event.preventDefault()
     const ok = announceResult(
-      dispatch({
+      await dispatchAsync({
         type: 'ADD_REVIEW_THREAD',
         input: {
           targetType,
@@ -191,7 +206,7 @@ export function ReviewThreadsPanel({
             {fieldOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </Select>
           <Textarea
-            helpText="작성 중인 의견은 이 기기에 자동 저장됩니다. 등록 전에는 참여자에게 보이지 않습니다."
+            helpText="작성 중인 의견은 이 기기와 Firebase에 자동 저장됩니다. 등록 전에는 참여자에게 보이지 않습니다."
             label="새 검토 댓글"
             maxLength={1000}
             onChange={(event) => setComposer((current) => ({ ...current, body: event.target.value }))}
@@ -199,7 +214,10 @@ export function ReviewThreadsPanel({
             rows={4}
             value={composer.body}
           />
-          <Button disabled={!composer.body.trim()} leadingIcon="add_comment" type="submit">댓글 등록</Button>
+          <div className="split mobile-stack">
+            <AutosaveStatus phase={composerAutosave.phase} savedAt={composerAutosave.savedAt} />
+            <Button disabled={!composer.body.trim()} leadingIcon="add_comment" type="submit">댓글 등록</Button>
+          </div>
         </form>
       ) : null}
 

@@ -364,6 +364,7 @@ export function executePlatformCommand(
         ? {
             ...existing,
             content,
+            draftRevision: (existing.draftRevision ?? 0) + 1,
             status: input.submit === false ? existing.status : 'submitted',
             updatedAt: nowIso,
             submittedAt: input.submit === false ? existing.submittedAt : nowIso,
@@ -373,6 +374,7 @@ export function executePlatformCommand(
             participantId: input.participantId,
             slideId: input.slideId,
             content,
+            draftRevision: 1,
             status: input.submit === false ? 'draft' : 'submitted',
             createdAt: nowIso,
             updatedAt: nowIso,
@@ -575,6 +577,7 @@ export function executePlatformCommand(
         title: input.title.trim(),
         pitch: input.pitch.trim(),
         description: input.description.trim(),
+        draftRevision: (existing?.draftRevision ?? 0) + 1,
         demoUrl: input.demoUrl?.trim() ?? '',
         githubUrl: input.githubUrl?.trim() ?? '',
         tags: (input.tags ?? []).map((tag) => tag.trim()).filter(Boolean).slice(0, 6),
@@ -642,6 +645,7 @@ export function executePlatformCommand(
         ...(input.nicknamePolicy === undefined ? {} : { nicknamePolicy: input.nicknamePolicy }),
         ...(themeIds === undefined ? {} : { themeIds }),
         ...(highlightAnswerIds === undefined ? {} : { highlightAnswerIds }),
+        revision: state.synthesis.revision + 1,
         updatedAt: nowIso,
       }
       return success(state, { ...state, synthesis }, synthesis, '정리 세션 내용을 저장했어요.')

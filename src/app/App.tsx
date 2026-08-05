@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from './router'
 import {
   DashboardPage,
+  AdminInviteAcceptPage,
   EmbedDashboardPage,
   ExhibitionPage,
   JoinPage,
@@ -13,6 +14,8 @@ import {
   SubmissionPage,
   SynthesisPage,
 } from '../features/pages'
+
+const EbookPage = lazy(() => import('../features/EbookPage').then((module) => ({ default: module.EbookPage })))
 
 function ScrollManager() {
   const { pathname } = useLocation()
@@ -27,7 +30,9 @@ export function App() {
     <>
       <ScrollManager />
       <Routes>
-        <Route element={<LandingPage />} path="/" />
+        <Route element={<Suspense fallback={null}><EbookPage /></Suspense>} path="/" />
+        <Route element={<Suspense fallback={null}><EbookPage /></Suspense>} path="/ebook" />
+        <Route element={<LandingPage />} path="/platform" />
         <Route element={<Navigate replace to="/join/VIBE26" />} path="/join" />
         <Route element={<JoinPage />} path="/join/:roomCode" />
         <Route element={<ParticipantLivePage />} path="/events/:eventId/lobby" />
@@ -39,6 +44,7 @@ export function App() {
         <Route element={<OrganizerOperationsPage section="submissions" />} path="/admin/events/:eventId/submissions" />
         <Route element={<OrganizerOperationsPage section="admins" />} path="/admin/events/:eventId/admins" />
         <Route element={<OrganizerOperationsPage section="portability" />} path="/admin/events/:eventId/portability" />
+        <Route element={<AdminInviteAcceptPage />} path="/admin/invites/:inviteId" />
         <Route element={<DashboardPage />} path="/dashboards/:slug" />
         <Route element={<EmbedDashboardPage />} path="/embed/:roomCode" />
         <Route element={<EmbedDashboardPage />} path="/embed/dashboards/:slug" />
