@@ -243,12 +243,12 @@ service cloud.firestore {
       }
 
       match /themes/{themeId} {
-        allow read: if isActiveMember(eventId);
+        allow read: if isOrganizer(eventId);
         allow write: if false;
       }
 
       match /synthesis/{documentId} {
-        allow read: if isActiveMember(eventId);
+        allow read: if isOrganizer(eventId);
         allow write: if false;
       }
 

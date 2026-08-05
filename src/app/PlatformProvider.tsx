@@ -57,11 +57,14 @@ function eventIdFromPath(pathname: string): string | null {
   return routeSegment(pathname, /^\/(?:admin\/)?events\/([^/]+)/)
 }
 
-function publicSlugFromPath(pathname: string, eventId: string | null): string {
+export function publicSlugFromPath(pathname: string, eventId: string | null): string {
   const publicSlug = routeSegment(pathname, /^\/(?:dashboards|exhibitions)\/([^/]+)/)
     ?? routeSegment(pathname, /^\/embed\/(?:dashboards\/)?([^/]+)/)
-    ?? routeSegment(pathname, /^\/join\/([^/]+)/)?.toLowerCase()
-  if (publicSlug) return publicSlug
+    ?? routeSegment(pathname, /^\/join\/([^/]+)/)
+  if (publicSlug) {
+    const normalized = publicSlug.toLowerCase()
+    return normalized === 'vibe26' ? LEGACY_PUBLIC_SLUG : normalized
+  }
   if (!eventId || eventId === LEGACY_EVENT_ID) return LEGACY_PUBLIC_SLUG
   return eventId.startsWith('session-') ? eventId.slice('session-'.length) : eventId
 }
@@ -266,7 +269,11 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const routeEventId = eventIdFromPath(pathname)
   const directoryMode = pathname === '/admin/sessions'
-  const publicOnlyRoute = pathname === '/'
+  const standaloneRoute = pathname === '/'
+    || pathname === '/ebook'
+    || directoryMode
+    || pathname.startsWith('/admin/invites/')
+  const publicOnlyRoute = standaloneRoute
     || pathname.startsWith('/join/')
     || pathname.startsWith('/dashboards/')
     || pathname.startsWith('/embed/')
@@ -282,6 +289,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
   const [authReady, setAuthReady] = useState(false)
   const [backendPhase, setBackendPhase] = useState<PlatformBackendPhase>('loading')
   const [backendError, setBackendError] = useState<string | null>(null)
+  const [loadedProjectionKey, setLoadedProjectionKey] = useState<string | null>(null)
   const [clock, setClock] = useState(() => Date.now())
 
   useEffect(() => {
@@ -303,7 +311,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!session) return
-    if (directoryMode || publicOnlyRoute) {
+    if (publicOnlyRoute) {
       setMembership(null)
       return
     }
@@ -323,9 +331,11 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       },
       () => setMembership(null),
     )
-  }, [activeEventId, directoryMode, publicOnlyRoute, routeEventId, session])
+  }, [activeEventId, publicOnlyRoute, routeEventId, session])
 
-  const activeMembership = membership?.status === 'active' ? membership : null
+  const activeMembership = membership?.status === 'active' && membership.eventId === activeEventId
+    ? membership
+    : null
   const projection = !publicOnlyRoute && (activeMembership?.role === 'owner' || activeMembership?.role === 'admin')
     ? { role: 'organizer' as const, participantId: undefined }
     : !publicOnlyRoute && activeMembership?.role === 'participant'
@@ -337,17 +347,26 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
     || pathname.startsWith('/exhibitions/')
     || pathname.endsWith('/synthesis')
     || pathname.endsWith('/portability')
+  const projectionKey = [
+    projection.role,
+    activeEventId,
+    activePublicSlug,
+    projection.participantId ?? '',
+    includePublishedSnapshot ? 'published' : 'live',
+  ].join(':')
 
   useEffect(() => {
     if (!authReady) return
-    if (directoryMode) {
+    if (standaloneRoute) {
       backendRef.current = null
       setBackendError(null)
       setBackendPhase('ready')
+      setLoadedProjectionKey(null)
       return
     }
     setBackendPhase('loading')
     setBackendError(null)
+    setLoadedProjectionKey(null)
     const backend = createFirebaseEventBackend({
       eventId: activeEventId,
       includePublishedSnapshot,
@@ -361,6 +380,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       setState(snapshot.state)
       setClock(Date.now())
       setBackendPhase('ready')
+      setLoadedProjectionKey(projectionKey)
     }, (cause) => {
       setBackendError(cause.message)
       setBackendPhase('error')
@@ -369,7 +389,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       backendRef.current = null
       unsubscribe()
     }
-  }, [activeEventId, activePublicSlug, authReady, directoryMode, includePublishedSnapshot, projection.participantId, projection.role])
+  }, [activeEventId, activePublicSlug, authReady, includePublishedSnapshot, projection.participantId, projection.role, projectionKey, standaloneRoute])
 
   useEffect(() => {
     if (state.live.timer.status !== 'running') return
@@ -581,7 +601,9 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
     state,
   ])
 
-  if (backendPhase === 'loading') {
+  const projectionReady = standaloneRoute || loadedProjectionKey === projectionKey
+
+  if (backendPhase === 'loading' || !projectionReady) {
     return (
       <div className="firebase-boundary" role="status">
         <span className="material-symbols-rounded" aria-hidden="true">cloud_sync</span>

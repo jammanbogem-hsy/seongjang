@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PlatformProvider, usePlatform } from './PlatformProvider'
+import { PlatformProvider, publicSlugFromPath, usePlatform } from './PlatformProvider'
 
 function TimerHarness() {
   const { dispatch, timerView } = usePlatform()
@@ -94,5 +94,18 @@ describe('PlatformProvider live clock', () => {
     fireEvent.click(screen.getByRole('button', { name: '다음 단계' }))
     expect(screen.getByLabelText('주최자 현재 단계')).toHaveTextContent('2')
     expect(screen.getByLabelText('참여자 현재 단계')).toHaveTextContent('2')
+  })
+})
+
+describe('session route isolation', () => {
+  it('normalizes each generated session code to its own public projection', () => {
+    expect(publicSlugFromPath('/join/AB12CD', null)).toBe('ab12cd')
+    expect(publicSlugFromPath('/embed/AB12CD', null)).toBe('ab12cd')
+    expect(publicSlugFromPath('/dashboards/AB12CD', null)).toBe('ab12cd')
+  })
+
+  it('keeps the legacy room code compatible without making it the new-session default', () => {
+    expect(publicSlugFromPath('/join/VIBE26', null)).toBe('vibecoding-2026')
+    expect(publicSlugFromPath('/events/session-xy12zz/live', 'session-xy12zz')).toBe('xy12zz')
   })
 })

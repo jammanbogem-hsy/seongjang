@@ -62,7 +62,7 @@ export async function seedVibe26Data({
       capacity: MAX_PARTICIPANTS,
       participantCount: 0,
       ownerUid,
-      lifecycle: 'draft',
+      lifecycle: 'lobby',
       publicationGeneration: 0,
       registrationOpen: true,
       exhibitionPublished: false,

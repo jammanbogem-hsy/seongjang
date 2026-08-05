@@ -203,5 +203,5 @@ export function createEmbedSnippet(
   origin = typeof window === 'undefined' ? 'https://vibecoding.example' : window.location.origin,
 ): string {
   const roomCode = encodeURIComponent(snapshot.data.roomCode)
-  return `<iframe src="${origin}/embed/${roomCode}?revision=${snapshot.revision}" title="${snapshot.data.title} 결과 대시보드" width="100%" height="720" loading="lazy" style="border:0;border-radius:24px"></iframe>`
+  return `<iframe src="${origin}/embed/${roomCode}" title="${snapshot.data.title} 결과 대시보드" width="100%" height="720" loading="lazy" style="border:0;border-radius:24px"></iframe>`
 }

@@ -1510,6 +1510,12 @@ select:focus-visible,
   overflow-wrap: anywhere;
 }
 
+.session-card__actions {
+  display: grid;
+  gap: 4px;
+  align-self: end;
+}
+
 .session-room-code {
   display: flex;
   align-items: baseline;

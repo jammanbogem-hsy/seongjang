@@ -26,6 +26,13 @@ function publicKey(revision: number, kind: string, privateId: string): string {
     .slice(0, 32)
 }
 
+export function publicProjectKey(eventId: string, privateId: string): string {
+  return createHash('sha256')
+    .update(`${eventId}\u0000project\u0000${privateId}`, 'utf8')
+    .digest('hex')
+    .slice(0, 32)
+}
+
 function displayName(snapshot: QueryDocumentSnapshot, anonymous: boolean): string {
   return anonymous ? '익명의 참여자' : String(snapshot.get('authorName') ?? '참여자')
 }
@@ -254,7 +261,7 @@ export async function publishEventProjection(
   }
   if (exhibitionPublished) {
     for (const project of submissionsSnapshot.docs) {
-      const key = publicKey(revision, 'project', project.id)
+      const key = publicProjectKey(eventId, project.id)
       writer.create(revisionRef.collection('projects').doc(key), {
         id: key,
         authorName: displayName(project, anonymous),

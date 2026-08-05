@@ -52,7 +52,6 @@ import {
 } from '../ui'
 import { ReviewThreadsPanel } from './ReviewThreads'
 import {
-  EVENT_ID,
   PUBLIC_SLUG,
   OrganizerShell,
   ParticipantShell,
@@ -86,8 +85,8 @@ export function AdminInviteAcceptPage() {
   const { inviteId = '' } = useParams<{ inviteId: string }>()
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [message, setMessage] = useState('')
-  const eventId = new URLSearchParams(search).get('eventId') || EVENT_ID
-  const validLink = isAdminInviteEmailLink()
+  const eventId = new URLSearchParams(search).get('eventId')?.trim() ?? ''
+  const validLink = Boolean(inviteId && eventId && isAdminInviteEmailLink())
 
   async function accept(event: FormEvent) {
     event.preventDefault()
@@ -170,6 +169,11 @@ export function LandingPage() {
     if (normalized) navigate(`/join/${normalized}`)
   }
 
+  const normalizedRoomCode = roomCode.trim().toUpperCase()
+  const resultSlug = normalizedRoomCode === 'VIBE26'
+    ? PUBLIC_SLUG
+    : normalizedRoomCode.toLowerCase()
+
   return (
     <PublicShell minimal>
       <main className="landing-gateway" id="main-content">
@@ -199,10 +203,10 @@ export function LandingPage() {
             <Button className="gateway-action" leadingIcon="view_carousel" onClick={() => navigate('/admin/sessions')} trailingIcon="arrow_forward" variant="text">
               주최자 세션
             </Button>
-            <Button className="gateway-action" leadingIcon="dashboard" onClick={() => navigate(`/dashboards/${PUBLIC_SLUG}`)} trailingIcon="arrow_forward" variant="text">
+            <Button className="gateway-action" disabled={!normalizedRoomCode} leadingIcon="dashboard" onClick={() => navigate(`/dashboards/${resultSlug}`)} trailingIcon="arrow_forward" variant="text">
               수합 대시보드
             </Button>
-            <Button className="gateway-action" leadingIcon="museum" onClick={() => navigate(`/exhibitions/${PUBLIC_SLUG}`)} trailingIcon="arrow_forward" variant="text">
+            <Button className="gateway-action" disabled={!normalizedRoomCode} leadingIcon="museum" onClick={() => navigate(`/exhibitions/${resultSlug}`)} trailingIcon="arrow_forward" variant="text">
               작품 전시
             </Button>
           </nav>
@@ -316,12 +320,20 @@ export function OrganizerSessionsPage() {
                   <div className="session-room-code"><span>방 코드</span><strong>{session.roomCode}</strong></div>
                 </div>
                 <div className="session-card__meta"><span><Icon name="group" size="sm" /> {session.participantCount}명</span><span>{session.role === 'owner' ? 'Owner' : '관리자'}</span></div>
-                <Button
-                  fullWidth
-                  leadingIcon={ended ? 'history' : 'arrow_forward'}
-                  onClick={() => navigate(ended ? `/admin/events/${session.eventId}/synthesis` : `/admin/events/${session.eventId}/control`)}
-                  variant={ended ? 'outlined' : 'tonal'}
-                >{ended ? '기록 보기' : '세션 열기'}</Button>
+                <div className="session-card__actions">
+                  <Button
+                    fullWidth
+                    leadingIcon={ended ? 'history' : 'arrow_forward'}
+                    onClick={() => navigate(ended ? `/admin/events/${session.eventId}/synthesis` : `/admin/events/${session.eventId}/control`)}
+                    variant={ended ? 'outlined' : 'tonal'}
+                  >{ended ? '기록 보기' : '세션 열기'}</Button>
+                  {session.dashboardPublished ? (
+                    <Button fullWidth leadingIcon="dashboard" onClick={() => navigate(`/dashboards/${session.publicSlug}`)} variant="text">수합 대시보드</Button>
+                  ) : null}
+                  {session.exhibitionPublished ? (
+                    <Button fullWidth leadingIcon="museum" onClick={() => navigate(`/exhibitions/${session.publicSlug}`)} variant="text">작품 전시</Button>
+                  ) : null}
+                </div>
               </article>
             )
           })}
@@ -347,7 +359,7 @@ export function OrganizerSessionsPage() {
 
 export function JoinPage() {
   const navigate = useNavigate()
-  const { roomCode = 'VIBE26' } = useParams()
+  const { roomCode = '' } = useParams()
   const { joinParticipant, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
   const [nickname, setNickname] = useState('')
@@ -363,7 +375,7 @@ export function JoinPage() {
     const result = await joinParticipant({ roomCode, nickname, pin })
     if (result.ok) {
       notify(result.notice ?? '입장했어요.')
-      navigate(`/events/${result.value.eventId ?? EVENT_ID}/live`)
+      navigate(`/events/${result.value.eventId}/live`)
       return
     }
     setError(result.error.message)
@@ -1957,7 +1969,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
               <Card padding="lg">
                 <SectionHeader description="Owner 1명과 초대된 관리자" eyebrow="ACCESS LIST" title="현재 권한" titleAs="h2" />
                 <div className="list">
-                  <div className="list-item"><span className="avatar">V</span><span className="list-main"><span className="list-title">jammanbogem@gmail.com</span><span className="list-subtitle">행사 생성자</span></span><Chip tone="primary">Owner</Chip></div>
+                  <div className="list-item"><span className="avatar">V</span><span className="list-main"><span className="list-title">행사 Owner</span><span className="list-subtitle">현재 세션 생성자</span></span><Chip tone="primary">Owner</Chip></div>
                   {state.adminInvites.map((invite) => {
                     const statusLabel = invite.status === 'accepted' ? '수락됨' : invite.status === 'revoked' ? '해제됨' : '대기 중'
                     const statusTone = invite.status === 'accepted' ? 'success' : invite.status === 'revoked' ? 'neutral' : 'warning'

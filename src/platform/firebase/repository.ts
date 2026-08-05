@@ -831,7 +831,6 @@ export class FirebaseEventBackend implements FirebaseBackend {
         ownAnswers = documents
         bundle.answers = this.mergeDocuments(revealedAnswers, ownAnswers)
       })
-      watchDocument('synthesis', `${eventPath}/synthesis/current`)
       watchCollection('projectDrafts', `${eventPath}/projectDrafts`, {
         limit: 1,
         path: `${eventPath}/projectDrafts`,

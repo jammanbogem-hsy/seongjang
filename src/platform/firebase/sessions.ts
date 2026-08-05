@@ -1,11 +1,13 @@
-import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore'
+import { collection, doc, onSnapshot } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { FIREBASE_CALLABLES } from './auth'
 import { getFirebaseServices, type FirebaseServices } from './config'
 
 export interface OrganizerSessionSummary {
+  dashboardPublished: boolean
   eventDate: string
   eventId: string
+  exhibitionPublished: boolean
   lifecycle: 'lobby' | 'live' | 'ended'
   participantCount: number
   publicSlug: string
@@ -68,36 +70,66 @@ export function observeOrganizerSessions(
     return () => undefined
   }
   let active = true
+  const eventUnsubscribes = new Map<string, () => void>()
+  const eventRoles = new Map<string, 'owner' | 'admin'>()
+  const records = new Map<string, OrganizerSessionSummary>()
+  const emit = () => {
+    if (!active) return
+    listener([...records.values()]
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)))
+  }
+  const stopEvent = (eventId: string) => {
+    eventUnsubscribes.get(eventId)?.()
+    eventUnsubscribes.delete(eventId)
+    eventRoles.delete(eventId)
+    records.delete(eventId)
+  }
   const unsubscribe = onSnapshot(collection(services.db, `users/${user.uid}/memberships`), (snapshot) => {
-    void Promise.all(snapshot.docs.map(async (membership) => {
+    const nextRoles = new Map<string, 'owner' | 'admin'>()
+    snapshot.docs.forEach((membership) => {
       const membershipData = membership.data()
-      if (membershipData.status !== 'active') return null
+      if (membershipData.status !== 'active') return
       const role = membershipData.role === 'admin' ? 'admin' : membershipData.role === 'owner' ? 'owner' : null
-      if (!role) return null
-      const eventId = membership.id
-      const event = await getDoc(doc(services.db, `events/${eventId}`))
-      if (!event.exists()) return null
-      const data = event.data()
-      const lifecycle = data.lifecycle === 'ended' ? 'ended' : data.lifecycle === 'live' ? 'live' : 'lobby'
-      return {
-        eventDate: typeof data.eventDate === 'string' ? data.eventDate : '',
-        eventId,
-        lifecycle,
-        participantCount: typeof data.participantCount === 'number' ? data.participantCount : 0,
-        publicSlug: typeof data.publicSlug === 'string' ? data.publicSlug : '',
-        role,
-        roomCode: typeof data.code === 'string' ? data.code : '',
-        title: typeof data.title === 'string' ? data.title : '이름 없는 세션',
-        updatedAt: asDate(data.updatedAt),
-      } satisfies OrganizerSessionSummary
-    })).then((records) => {
-      if (!active) return
-      listener(records.filter((record): record is OrganizerSessionSummary => record !== null)
-        .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)))
-    }).catch((cause) => onError(cause instanceof Error ? cause : new Error('세션 목록을 불러오지 못했습니다.')))
+      if (role) nextRoles.set(membership.id, role)
+    })
+
+    eventUnsubscribes.forEach((_stop, eventId) => {
+      if (!nextRoles.has(eventId)) stopEvent(eventId)
+    })
+    nextRoles.forEach((role, eventId) => {
+      if (eventRoles.get(eventId) === role && eventUnsubscribes.has(eventId)) return
+      stopEvent(eventId)
+      eventRoles.set(eventId, role)
+      eventUnsubscribes.set(eventId, onSnapshot(doc(services.db, `events/${eventId}`), (event) => {
+        if (!event.exists()) {
+          records.delete(eventId)
+          emit()
+          return
+        }
+        const data = event.data()
+        const lifecycle = data.lifecycle === 'ended' ? 'ended' : data.lifecycle === 'live' ? 'live' : 'lobby'
+        records.set(eventId, {
+          dashboardPublished: Number(data.publishedRevision ?? 0) > 0,
+          eventDate: typeof data.eventDate === 'string' ? data.eventDate : '',
+          eventId,
+          exhibitionPublished: data.exhibitionPublished === true,
+          lifecycle,
+          participantCount: typeof data.participantCount === 'number' ? data.participantCount : 0,
+          publicSlug: typeof data.publicSlug === 'string' ? data.publicSlug : '',
+          role,
+          roomCode: typeof data.code === 'string' ? data.code : '',
+          title: typeof data.title === 'string' ? data.title : '이름 없는 세션',
+          updatedAt: asDate(data.updatedAt),
+        })
+        emit()
+      }, (cause) => onError(cause)))
+    })
+    if (records.size || nextRoles.size === 0) emit()
   }, (cause) => onError(cause))
   return () => {
     active = false
     unsubscribe()
+    eventUnsubscribes.forEach((stop) => stop())
+    eventUnsubscribes.clear()
   }
 }

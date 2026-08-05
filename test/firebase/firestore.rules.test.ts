@@ -161,6 +161,12 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
           email: 'admin@example.com',
           role: 'admin',
         }),
+        setDoc(doc(db, `events/${eventId}/themes/theme-private`), {
+          label: '주최자 정리 주제',
+        }),
+        setDoc(doc(db, `events/${eventId}/synthesis/current`), {
+          organizerSummary: '발행 전 주최자 정리 초안',
+        }),
         setDoc(doc(db, `participantSecrets/${eventId}/members/${participantA}`), {
           encryptedPin: { ciphertext: 'private' },
           pinVerifier: 'private',
@@ -352,6 +358,8 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
     await assertFails(getDoc(doc(db, `participantSecrets/${eventId}/members/${participantA}`)))
     await assertFails(getDoc(doc(db, `events/${eventId}/members/${ownerUid}`)))
     await assertFails(getDoc(doc(db, `events/${eventId}/adminInvites/invite-1`)))
+    await assertFails(getDoc(doc(db, `events/${eventId}/themes/theme-private`)))
+    await assertFails(getDoc(doc(db, `events/${eventId}/synthesis/current`)))
     await assertFails(getDoc(doc(db, `events/${eventId}/participants/${participantB}`)))
   })
 
@@ -365,6 +373,8 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
     await assertSucceeds(getDoc(doc(db, `events/${eventId}/live/state`)))
     await assertSucceeds(getDoc(doc(db, `events/${eventId}/participants/${participantA}`)))
     await assertSucceeds(getDoc(doc(db, `events/${eventId}/adminInvites/invite-1`)))
+    await assertSucceeds(getDoc(doc(db, `events/${eventId}/themes/theme-private`)))
+    await assertSucceeds(getDoc(doc(db, `events/${eventId}/synthesis/current`)))
     await assertSucceeds(getDoc(doc(db, `events/${eventId}/answerDrafts/${participantB}__stage-discover`)))
     await assertSucceeds(getDoc(doc(db, `events/${eventId}/projectDrafts/${participantB}`)))
   })
