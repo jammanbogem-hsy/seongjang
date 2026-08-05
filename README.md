@@ -25,8 +25,8 @@ npm --prefix functions run check
 
 ## 주요 데모 경로
 
-- `/` — PDF 원문을 책 넘김 효과로 읽는 강의 원고 온라인 책자
-- `/platform` — 해커톤 서비스 소개와 방 입장·운영 진입
+- `/` — 해커톤 서비스 소개와 방 입장·운영 진입
+- `/ebook` — PDF 원문을 책 넘김 효과로 읽는 강의 원고 온라인 책자
 - `/join/VIBE26` — 닉네임·PIN 등록/재입장
 - `/events/room-vibe26/live` — 참여자 라이브 질문·답변·댓글
 - `/events/room-vibe26/submission` — 개인 최종 작품 제출
@@ -37,7 +37,6 @@ npm --prefix functions run check
 - `/admin/invites/:inviteId` — 이메일 링크 기반 관리자 초대 수락
 - `/dashboards/vibecoding-2026` — 공개 수합 대시보드
 - `/exhibitions/vibecoding-2026` — 개인 작품 전시
-- `/ebook` — 온라인 책자 보조 주소
 
 주최자가 슬라이드·타이머·공개 상태를 바꾸면 Cloud Functions가 권한을 검증하고 Firestore를 갱신하며, 연결된 참여자 화면은 실시간 listener로 같은 상태를 받습니다.
 첫 타이머를 시작하거나 재개하면 신규 닉네임 등록은 서버에서 마감되고, 기존 참여자의 닉네임·4자리 PIN 재입장은 계속 허용됩니다.

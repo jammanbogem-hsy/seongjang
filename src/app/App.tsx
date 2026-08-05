@@ -30,9 +30,9 @@ export function App() {
     <>
       <ScrollManager />
       <Routes>
-        <Route element={<Suspense fallback={null}><EbookPage /></Suspense>} path="/" />
+        <Route element={<LandingPage />} path="/" />
         <Route element={<Suspense fallback={null}><EbookPage /></Suspense>} path="/ebook" />
-        <Route element={<LandingPage />} path="/platform" />
+        <Route element={<Navigate replace to="/" />} path="/platform" />
         <Route element={<Navigate replace to="/join/VIBE26" />} path="/join" />
         <Route element={<JoinPage />} path="/join/:roomCode" />
         <Route element={<ParticipantLivePage />} path="/events/:eventId/lobby" />

@@ -10,7 +10,7 @@ function RuntimeApp() {
   const app = <App />
   // The standalone ebook has no live product data. Avoid opening Auth,
   // Firestore, App Check and public-revision listeners for reading a PDF.
-  if (pathname === '/' || pathname === '/ebook') return app
+  if (pathname === '/ebook') return app
   return <PlatformProvider>{app}</PlatformProvider>
 }
 

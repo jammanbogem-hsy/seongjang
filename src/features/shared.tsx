@@ -106,7 +106,7 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
 
   if (authRole !== 'owner' && authRole !== 'admin') {
     return (
-      <AppShell brandTo="/platform" mode="organizer" roomCode={state.room.code}>
+      <AppShell brandTo="/" mode="organizer" roomCode={state.room.code}>
         <main className="page narrow" id="main-content">
           <Card className="empty-state identity-gate" padding="lg">
             <CatIllustration decorative size="lg" variant="review" />
