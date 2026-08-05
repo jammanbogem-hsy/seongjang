@@ -447,6 +447,119 @@ select:focus-visible,
   background: var(--paper);
 }
 
+/* The root route is an application gateway, not a marketing page. */
+.app-shell--gateway {
+  min-height: 100vh;
+}
+
+.landing-gateway {
+  display: grid;
+  width: min(100% - 32px, 920px);
+  min-height: calc(100vh - 72px);
+  margin: 0 auto;
+  padding: 48px 0 88px;
+  place-items: center;
+}
+
+.gateway-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr);
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--outline);
+  border-radius: 24px;
+  background: #fff;
+}
+
+.gateway-join {
+  padding: clamp(28px, 5vw, 48px);
+}
+
+.gateway-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 24px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--primary);
+  background: var(--surface-container);
+}
+
+.gateway-join h1 {
+  margin: 0 0 28px;
+  font-size: clamp(30px, 5vw, 42px);
+  letter-spacing: -.035em;
+}
+
+.gateway-join-form {
+  display: grid;
+  gap: 8px;
+}
+
+.gateway-join-form label {
+  color: var(--on-surface-variant);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gateway-join-row {
+  display: flex;
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid #747775;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.gateway-join-row:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.gateway-join-row input {
+  min-width: 0;
+  flex: 1;
+  padding: 0 12px;
+  border: 0;
+  outline: 0;
+  color: var(--ink);
+  background: transparent;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.gateway-actions {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 28px;
+  border-left: 1px solid var(--outline);
+  background: var(--surface-container-low);
+}
+
+.gateway-action.ui-button {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 24px;
+  justify-content: stretch;
+  min-height: 58px;
+  padding: 0 16px;
+  border-radius: 14px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.gateway-action.ui-button:hover {
+  color: #001d35;
+  background: var(--primary-soft);
+}
+
+.gateway-action .ui-icon:last-child {
+  color: var(--primary);
+}
+
 /* Page and workspace surfaces */
 .page {
   padding-top: 28px;
@@ -924,6 +1037,37 @@ select:focus-visible,
     margin: 0;
     padding: 24px 16px 104px;
     border-radius: 0;
+  }
+
+  .landing-gateway {
+    width: calc(100% - 24px);
+    min-height: calc(100vh - 64px);
+    padding: 24px 0 90px;
+  }
+
+  .gateway-panel {
+    grid-template-columns: 1fr;
+    border-radius: 20px;
+  }
+
+  .gateway-join {
+    padding: 28px 20px 24px;
+  }
+
+  .gateway-actions {
+    padding: 12px;
+    border-top: 1px solid var(--outline);
+    border-left: 0;
+  }
+
+  .gateway-join-row {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 8px;
+  }
+
+  .gateway-join-row input {
+    min-height: 46px;
   }
 
   .page,

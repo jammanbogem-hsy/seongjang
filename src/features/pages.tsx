@@ -170,87 +170,40 @@ export function LandingPage() {
   }
 
   return (
-    <PublicShell>
-      <main id="main-content">
-        <section className="page hero">
-          <div className="hero-copy">
-            <span className="eyebrow"><span className="live-dot" /> Hackathon operating system</span>
-            <h1 className="display-title">
-              생각이 흩어지지 않는<br />
-              <span className="accent">해커톤의 하루</span>
-            </h1>
-            <p className="hero-description">
-              주최자의 한 번의 페이지 전환으로 모두가 같은 흐름을 보고, 각자의 답변은 정리 대시보드와 전시 작품으로 이어집니다.
-            </p>
-            <form className="hero-join" onSubmit={join}>
-              <label htmlFor="hero-room-code">방 코드로 바로 입장</label>
-              <div className="hero-join-row">
+    <PublicShell minimal>
+      <main className="landing-gateway" id="main-content">
+        <section aria-labelledby="gateway-title" className="gateway-panel">
+          <div className="gateway-join">
+            <span aria-hidden="true" className="gateway-icon"><Icon filled name="person_add" size="lg" /></span>
+            <h1 id="gateway-title">참여자 입장</h1>
+            <form className="gateway-join-form" onSubmit={join}>
+              <label htmlFor="gateway-room-code">방 코드</label>
+              <div className="gateway-join-row">
                 <input
-                  id="hero-room-code"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  id="gateway-room-code"
                   maxLength={8}
                   onChange={(event) => setRoomCode(event.target.value.toUpperCase())}
                   value={roomCode}
                 />
-                <Button trailingIcon="arrow_forward" type="submit">입장하기</Button>
+                <Button trailingIcon="arrow_forward" type="submit">입장</Button>
               </div>
             </form>
-            <div className="button-row hero-actions">
-              <Button leadingIcon="tune" onClick={() => navigate(`/admin/events/${EVENT_ID}/control`)} size="lg" variant="tonal">
-                주최자 로그인
-              </Button>
-              <Button leadingIcon="museum" onClick={() => navigate(`/exhibitions/${PUBLIC_SLUG}`)} size="lg" variant="outlined">
-                결과 전시 보기
-              </Button>
-            </div>
           </div>
-          <div className="hero-art" aria-label="해커톤의 흐름을 안내하는 고양이 삽화">
-            <img alt="노트북과 데이터를 살펴보는 레트로 고양이" src="/assets/retro/retro-cat-user-flow-ux-ui.webp" />
-            <div className="floating-note">24명의 생각 → 하나의 공개 대시보드</div>
-          </div>
-        </section>
 
-        <section className="page section">
-          <SectionHeader
-            description="주최자 운영, 참여자의 개인 기록, 공개 데이터가 하나의 행사 흐름으로 연결됩니다."
-            eyebrow="ONE EVENT · THREE VIEWS"
-            title="한 행사를 세 개의 시선으로"
-          />
-          <div className="grid three">
-            <article className="role-card">
-              <span className="role-number">01 · ORGANIZE</span>
-              <h3>주최자 콘솔</h3>
-              <p>슬라이드, 타이머, 공개 시점과 댓글을 제어하고 100명 안의 흐름을 읽습니다.</p>
-              <ResultLink to={`/admin/events/${EVENT_ID}/control`}>주최자 로그인</ResultLink>
-            </article>
-            <article className="role-card">
-              <span className="role-number">02 · PARTICIPATE</span>
-              <h3>참여자 워크스페이스</h3>
-              <p>닉네임과 PIN으로 다시 들어오고, 단계별 개인 답변과 최종 작품을 제출합니다.</p>
-              <ResultLink to={`/join/${state.room.code}`}>참여자로 입장</ResultLink>
-            </article>
-            <article className="role-card">
-              <span className="role-number">03 · REUSE</span>
-              <h3>공개 결과와 연결</h3>
-              <p>정리된 결과를 전시하고 JSON, CSV, Markdown, README로 다음 행사에 전달합니다.</p>
-              <ResultLink to={`/dashboards/${PUBLIC_SLUG}`}>발행된 결과 보기</ResultLink>
-            </article>
-          </div>
+          <nav aria-label="플랫폼 바로가기" className="gateway-actions">
+            <Button className="gateway-action" leadingIcon="admin_panel_settings" onClick={() => navigate(`/admin/events/${EVENT_ID}/control`)} trailingIcon="arrow_forward" variant="text">
+              주최자 로그인
+            </Button>
+            <Button className="gateway-action" leadingIcon="dashboard" onClick={() => navigate(`/dashboards/${PUBLIC_SLUG}`)} trailingIcon="arrow_forward" variant="text">
+              수합 대시보드
+            </Button>
+            <Button className="gateway-action" leadingIcon="museum" onClick={() => navigate(`/exhibitions/${PUBLIC_SLUG}`)} trailingIcon="arrow_forward" variant="text">
+              작품 전시
+            </Button>
+          </nav>
         </section>
-
-        <section className="page section feature-band">
-          <div className="feature-copy">
-            <span className="eyebrow">LIVE → SYNTHESIS → EXHIBITION</span>
-            <h2>행사가 끝나도 데이터는 다음 장면으로 갑니다.</h2>
-            <p>답변과 댓글은 공개 범위를 거쳐 하나의 불변 리비전으로 발행됩니다. 같은 데이터가 대시보드, 임베드, 문서와 전시를 만듭니다.</p>
-            <div className="chip-row">
-              <Chip icon="sync" tone="primary">실시간 진행 동기화</Chip>
-              <Chip icon="person" tone="warning">모두 개인 제출</Chip>
-              <Chip icon="shield" tone="success">공개 데이터 분리</Chip>
-            </div>
-          </div>
-          <img alt="수집된 데이터를 살펴보는 고양이" src="/assets/retro/retro-cat-class-data-feedback.webp" />
-        </section>
-
       </main>
     </PublicShell>
   )

@@ -183,7 +183,7 @@ export function ParticipantShell({ children }: { children: ReactNode }) {
   )
 }
 
-export function PublicShell({ children }: { children: ReactNode }) {
+export function PublicShell({ children, minimal = false }: { children: ReactNode; minimal?: boolean }) {
   const navigate = useNavigate()
   const { state } = usePlatform()
   return (
@@ -193,18 +193,19 @@ export function PublicShell({ children }: { children: ReactNode }) {
           방 입장
         </Button>
       }
+      className={minimal ? 'app-shell--gateway' : undefined}
       mode="public"
       navItems={publicNav}
       roomCode={state.room.code}
     >
       {children}
-      <footer className="site-footer">
+      {!minimal ? <footer className="site-footer">
         <div>
           <strong>VibeCoding</strong>
           <p>한 사람의 생각부터 모두의 기록까지.</p>
         </div>
         <span>참여자의 기록과 공개 범위를 소중하게 보호합니다.</span>
-      </footer>
+      </footer> : null}
     </AppShell>
   )
 }
