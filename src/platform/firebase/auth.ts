@@ -15,12 +15,14 @@ import {
 import { httpsCallable } from 'firebase/functions'
 import { getFirebaseServices, type FirebaseServices } from './config'
 import { createFirebaseSdkDriver, type FirebaseBackendDriver } from './driver'
+import { clearSensitiveBrowserState } from '../securityStorage'
 
 export const FIREBASE_CALLABLES = Object.freeze({
   applyEventCommand: 'applyEventCommand',
   applyReviewCommand: 'applyReviewCommand',
   bootstrapVibe26: 'bootstrapVibe26',
   joinParticipantWithPin: 'joinOrReenterParticipant',
+  manageJoinAccessCode: 'manageJoinAccessCode',
   revealParticipantPin: 'revealParticipantPin',
 })
 
@@ -36,6 +38,7 @@ export interface FirebaseAuthSession {
 
 export interface ParticipantJoinRequest {
   deviceId?: string
+  entryCode?: string
   nickname: string
   pin: string
   roomCode: string
@@ -63,13 +66,55 @@ export interface FirebaseEventMembership {
   eventId: string
   participantId: string | null
   role: Exclude<FirebaseSessionRole, null>
-  status: 'active' | 'disabled' | 'invited'
+  status: 'active' | 'disabled' | 'invited' | 'revoked'
   uid: string
 }
 
 export interface BootstrapVibe26Result {
   created: boolean
   eventId: string
+}
+
+function membershipFromDocument(
+  eventId: string,
+  uid: string,
+  data: Record<string, unknown> | undefined,
+): FirebaseEventMembership {
+  if (!data) throw new Error('이 행사에 대한 접근 권한이 없습니다.')
+  const role = roleClaim(data.role)
+  if (!role) throw new Error('행사 역할 정보가 올바르지 않습니다.')
+  const status = data.status === 'disabled' || data.status === 'invited' || data.status === 'revoked'
+    ? data.status
+    : 'active'
+  return {
+    eventId,
+    participantId: role === 'participant'
+      ? (textClaim(data.participantId) ?? textClaim(data.uid) ?? uid)
+      : null,
+    role,
+    status,
+    uid,
+  }
+}
+
+export function observeFirebaseEventMembership(
+  eventId: string,
+  uid: string,
+  next: (membership: FirebaseEventMembership) => void,
+  error: (cause: Error) => void,
+  driver: FirebaseBackendDriver = createFirebaseSdkDriver(),
+): () => void {
+  return driver.watchDocument(
+    `events/${eventId}/members/${uid}`,
+    (snapshot) => {
+      try {
+        next(membershipFromDocument(eventId, uid, snapshot.document?.data))
+      } catch (cause) {
+        error(cause instanceof Error ? cause : new Error('행사 권한 정보를 확인하지 못했습니다.'))
+      }
+    },
+    error,
+  )
 }
 
 interface JoinCallableResult {
@@ -142,33 +187,12 @@ export function resolveFirebaseEventMembership(
       action()
       queueMicrotask(() => unsubscribe())
     }
-    unsubscribe = driver.watchDocument(
-      `events/${eventId}/members/${uid}`,
-      (snapshot) => {
-        const data = snapshot.document?.data
-        if (!data) {
-          finish(() => reject(new Error('이 행사에 대한 접근 권한이 없습니다.')))
-          return
-        }
-        const role = roleClaim(data.role)
-        if (!role) {
-          finish(() => reject(new Error('행사 역할 정보가 올바르지 않습니다.')))
-          return
-        }
-        const status = data.status === 'disabled' || data.status === 'invited'
-          ? data.status
-          : 'active'
-        finish(() => resolve({
-          eventId,
-          participantId: role === 'participant'
-            ? (textClaim(data.participantId) ?? textClaim(data.uid) ?? uid)
-            : null,
-          role,
-          status,
-          uid,
-        }))
-      },
+    unsubscribe = observeFirebaseEventMembership(
+      eventId,
+      uid,
+      (membership) => finish(() => resolve(membership)),
       (cause) => finish(() => reject(cause)),
+      driver,
     )
   })
 }
@@ -186,6 +210,7 @@ export async function joinParticipantWithPin(
   )
   const response = (await callable({
     deviceId: request.deviceId ?? participantDeviceId(),
+    entryCode: request.entryCode ?? '',
     nickname: request.nickname,
     pin: request.pin,
     roomCode: request.roomCode,
@@ -271,5 +296,9 @@ export function observeFirebaseAuthSession(
 export async function signOutFirebase(
   services: FirebaseServices = getFirebaseServices(),
 ): Promise<void> {
-  await signOut(services.auth)
+  try {
+    await signOut(services.auth)
+  } finally {
+    clearSensitiveBrowserState()
+  }
 }

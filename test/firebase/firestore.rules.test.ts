@@ -74,13 +74,13 @@ function projectDraft(ownerParticipantId: string) {
   }
 }
 
-function privateComposerDraft(targetType = 'review-composer') {
+function privateComposerDraft(targetType = 'comment') {
   return {
     clientMutationId: 'private-composer-test',
     clientUpdatedAt: '2026-08-05T02:00:00.000Z',
     deviceId: 'rules-test-device',
     payload: { body: '등록 전의 비공개 검토 의견', field: '상세 설명' },
-    targetId: 'submission-01',
+    targetId: 'answer-revealed',
     targetType,
     updatedAt: serverTimestamp(),
   }
@@ -133,7 +133,14 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
           uid: participantB,
         }),
         setDoc(doc(db, `events/${eventId}/answerDrafts/${participantB}__stage-discover`), answerDraft(participantB)),
+        setDoc(doc(db, `events/${eventId}/answers/answer-revealed`), {
+          ownerParticipantId: participantB,
+          slideId: 'stage-discover',
+          status: 'submitted',
+          visibility: 'revealed',
+        }),
         setDoc(doc(db, `events/${eventId}/projectDrafts/${participantB}`), projectDraft(participantB)),
+        setDoc(doc(db, `events/${eventId}/members/${participantB}/drafts/comment__answer-revealed`), privateComposerDraft()),
         setDoc(doc(db, `events/${eventId}/discussionComments/comment-event`), {
           answerId: 'answer-revealed',
           body: '공개 댓글',
@@ -288,13 +295,37 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
 
   it('autosaves private composers only under the signed-in member', async () => {
     const db = testEnvironment.authenticatedContext(participantA).firestore()
-    const ownDraft = doc(db, `events/${eventId}/members/${participantA}/drafts/review-composer__submission-01`)
-    const otherDraft = doc(db, `events/${eventId}/members/${participantB}/drafts/review-composer__submission-01`)
+    const ownDraft = doc(db, `events/${eventId}/members/${participantA}/drafts/comment__answer-revealed`)
+    const otherDraft = doc(db, `events/${eventId}/members/${participantB}/drafts/comment__answer-revealed`)
 
     await assertSucceeds(setDoc(ownDraft, privateComposerDraft()))
     await assertSucceeds(getDoc(ownDraft))
     await assertFails(setDoc(otherDraft, privateComposerDraft()))
+    await assertFails(setDoc(
+      doc(db, `events/${eventId}/members/${participantA}/drafts/arbitrary-document-id`),
+      privateComposerDraft(),
+    ))
     await assertFails(setDoc(ownDraft, privateComposerDraft('unsupported-target')))
+  })
+
+  it('keeps unsent member composer drafts private from organizers', async () => {
+    const ownerDb = testEnvironment.authenticatedContext(ownerUid).firestore()
+    const adminDb = testEnvironment.authenticatedContext(adminUid).firestore()
+    const privateDraftPath = `events/${eventId}/members/${participantB}/drafts/comment__answer-revealed`
+
+    await assertFails(getDoc(doc(ownerDb, privateDraftPath)))
+    await assertFails(getDoc(doc(adminDb, privateDraftPath)))
+  })
+
+  it('allows only organizers to autosave review composers for existing targets', async () => {
+    const ownerDb = testEnvironment.authenticatedContext(ownerUid).firestore()
+    const participantDb = testEnvironment.authenticatedContext(participantA).firestore()
+    const draft = privateComposerDraft('review-composer')
+    const ownerDraft = doc(ownerDb, `events/${eventId}/members/${ownerUid}/drafts/review-composer__answer-revealed`)
+    const participantDraft = doc(participantDb, `events/${eventId}/members/${participantA}/drafts/review-composer__answer-revealed`)
+
+    await assertSucceeds(setDoc(ownerDraft, draft))
+    await assertFails(setDoc(participantDraft, draft))
   })
 
   it('allows the participant realtime query to return only event-visible comments', async () => {

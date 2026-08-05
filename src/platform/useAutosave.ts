@@ -27,7 +27,7 @@ interface UseAutosaveOptions {
 }
 
 export function useAutosave({
-  delay = 700,
+  delay = 1_500,
   enabled = true,
   fingerprint,
   save,

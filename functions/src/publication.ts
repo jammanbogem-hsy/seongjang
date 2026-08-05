@@ -30,6 +30,15 @@ function displayName(snapshot: QueryDocumentSnapshot, anonymous: boolean): strin
   return anonymous ? '익명의 참여자' : String(snapshot.get('authorName') ?? '참여자')
 }
 
+function instantValue(value: unknown): string {
+  if (value instanceof Timestamp) return value.toDate().toISOString()
+  return value instanceof Date ? value.toISOString() : String(value ?? '')
+}
+
+function ordered(docs: QueryDocumentSnapshot[]): QueryDocumentSnapshot[] {
+  return [...docs].sort((left, right) => left.id.localeCompare(right.id))
+}
+
 interface PublicationExpectation {
   exhibitionPublished: boolean
   generation: number
@@ -82,9 +91,95 @@ export async function publishEventProjection(
   }
   const publicationGeneration = expectation?.generation ?? capturedGeneration
   const exhibitionPublished = expectation?.exhibitionPublished ?? capturedExhibitionState
+  const revealedSlideIds = new Set(
+    slidesSnapshot.docs
+      .filter((slide) => slide.get('answersRevealed') === true)
+      .map((slide) => slide.id),
+  )
+  const answers = answersSnapshot.docs.filter((answer) =>
+    revealedSlideIds.has(String(answer.get('slideId') ?? '')),
+  )
+  const answerIds = new Set(answers.map((answer) => answer.id))
+  const comments = commentsSnapshot.docs.filter((comment) =>
+    comment.get('visibility') === 'event'
+      && answerIds.has(String(comment.get('answerId') ?? '')),
+  )
+  const nicknamePolicy = synthesisSnapshot.get('nicknamePolicy') === 'anonymous'
+    ? 'anonymous'
+    : 'nickname'
+  const anonymous = nicknamePolicy === 'anonymous'
+  const selectedThemeIds = new Set(
+    Array.isArray(synthesisSnapshot.get('themeIds'))
+      ? synthesisSnapshot.get('themeIds') as string[]
+      : [],
+  )
+  const selectedHighlightAnswerIds = Array.isArray(synthesisSnapshot.get('highlightAnswerIds'))
+    ? synthesisSnapshot.get('highlightAnswerIds') as string[]
+    : []
+  const contentHash = createHash('sha256').update(JSON.stringify({
+    event: {
+      eventDate: String(eventSnapshot.get('eventDate') ?? ''),
+      exhibitionPublished,
+      organizerName: String(eventSnapshot.get('organizerName') ?? ''),
+      participantCount: Number(eventSnapshot.get('participantCount') ?? 0),
+      tagline: String(eventSnapshot.get('tagline') ?? ''),
+      title: String(eventSnapshot.get('title') ?? ''),
+    },
+    synthesis: {
+      highlightAnswerIds: [...selectedHighlightAnswerIds].sort(),
+      nicknamePolicy,
+      organizerSummary: String(synthesisSnapshot.get('organizerSummary') ?? ''),
+      themeIds: [...selectedThemeIds].sort(),
+    },
+    slides: slidesSnapshot.docs.map((slide) => ({
+      id: slide.id,
+      eyebrow: String(slide.get('eyebrow') ?? ''),
+      order: Number(slide.get('order') ?? 0),
+      prompt: String(slide.get('prompt') ?? ''),
+      title: String(slide.get('title') ?? ''),
+    })),
+    answers: ordered(answers).map((answer) => ({
+      id: answer.id,
+      authorName: displayName(answer, anonymous),
+      content: String(answer.get('content') ?? ''),
+      slideId: String(answer.get('slideId') ?? ''),
+      submittedAt: instantValue(answer.get('submittedAt') ?? answer.get('updatedAt')),
+    })),
+    comments: ordered(comments).map((comment) => ({
+      id: comment.id,
+      answerId: String(comment.get('answerId') ?? ''),
+      authorName: displayName(comment, anonymous),
+      body: String(comment.get('body') ?? ''),
+      createdAt: instantValue(comment.get('createdAt')),
+    })),
+    projects: exhibitionPublished ? ordered(submissionsSnapshot.docs).map((project) => ({
+      id: project.id,
+      authorName: displayName(project, anonymous),
+      coverImage: String(project.get('coverImage') ?? ''),
+      demoUrl: String(project.get('demoUrl') ?? ''),
+      description: String(project.get('description') ?? ''),
+      githubUrl: String(project.get('githubUrl') ?? ''),
+      pitch: String(project.get('pitch') ?? ''),
+      retrospective: String(project.get('retrospective') ?? ''),
+      submittedAt: instantValue(project.get('submittedAt') ?? project.get('updatedAt')),
+      tags: Array.isArray(project.get('tags')) ? project.get('tags') : [],
+      title: String(project.get('title') ?? ''),
+    })) : [],
+    themes: ordered(themesSnapshot.docs.filter((theme) => selectedThemeIds.has(theme.id))).map((theme) => ({
+      id: theme.id,
+      answerIds: Array.isArray(theme.get('answerIds')) ? theme.get('answerIds') : [],
+      color: String(theme.get('color') ?? ''),
+      description: String(theme.get('description') ?? ''),
+      label: String(theme.get('label') ?? ''),
+    })),
+  })).digest('hex')
   const now = Timestamp.now()
-  const revision = await db.runTransaction(async (transaction) => {
+  const allocation = await db.runTransaction(async (transaction) => {
     const publicRoot = await transaction.get(publicRootRef)
+    const latestRevision = Number(publicRoot.get('latestRevision') ?? 0)
+    if (latestRevision > 0 && publicRoot.get('contentHash') === contentHash) {
+      return { noOp: true, revision: latestRevision }
+    }
     const throttleRemainingMs = publicationThrottleRemainingMs(
       publicRoot.get('lastPublicationStartedAt'),
       now.toMillis(),
@@ -100,7 +195,7 @@ export async function publishEventProjection(
     // the failed revision document.
     const nextRevision = Math.max(
       Number(publicRoot.get('revisionSequence') ?? 0),
-      Number(publicRoot.get('latestRevision') ?? 0),
+      latestRevision,
     ) + 1
     transaction.set(publicRootRef, {
       lastPublicationStartedAt: now,
@@ -113,35 +208,13 @@ export async function publishEventProjection(
       startedAt: now,
       startedBy: actor.uid,
     })
-    return nextRevision
+    return { noOp: false, revision: nextRevision }
   })
-
-  const revealedSlideIds = new Set(
-    slidesSnapshot.docs
-      .filter((slide) => slide.get('answersRevealed') === true)
-      .map((slide) => slide.id),
-  )
-  const answers = answersSnapshot.docs.filter((answer) =>
-    revealedSlideIds.has(String(answer.get('slideId') ?? '')),
-  )
+  if (allocation.noOp) return allocation.revision
+  const revision = allocation.revision
   const answerKeyById = new Map(
     answers.map((answer) => [answer.id, publicKey(revision, 'answer', answer.id)]),
   )
-  const comments = commentsSnapshot.docs.filter((comment) =>
-    answerKeyById.has(String(comment.get('answerId') ?? '')),
-  )
-  const nicknamePolicy = synthesisSnapshot.get('nicknamePolicy') === 'anonymous'
-    ? 'anonymous'
-    : 'nickname'
-  const anonymous = nicknamePolicy === 'anonymous'
-  const selectedThemeIds = new Set(
-    Array.isArray(synthesisSnapshot.get('themeIds'))
-      ? synthesisSnapshot.get('themeIds') as string[]
-      : [],
-  )
-  const selectedHighlightAnswerIds = Array.isArray(synthesisSnapshot.get('highlightAnswerIds'))
-    ? synthesisSnapshot.get('highlightAnswerIds') as string[]
-    : []
   const highlightAnswerKeys = selectedHighlightAnswerIds
     .map((answerId) => answerKeyById.get(answerId))
     .filter((value): value is string => typeof value === 'string')
@@ -259,6 +332,8 @@ export async function publishEventProjection(
     if (revision > currentRevision && eventStateStillCurrent) {
       transaction.set(publicRootRef, {
         eventId,
+        contentHash,
+        join: { participantCount },
         title: String(eventSnapshot.get('title') ?? ''),
         tagline: String(eventSnapshot.get('tagline') ?? ''),
         latestRevision: revision,

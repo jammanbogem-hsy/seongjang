@@ -73,8 +73,8 @@ const LISTENER_LIMITS = {
   participants: 100,
   projectDrafts: 100,
   projects: 100,
-  reviewMessages: 200,
-  reviewThreads: 1_000,
+  reviewMessages: 50,
+  reviewThreads: 300,
   slides: 12,
   submissions: 100,
   themes: 32,
@@ -318,7 +318,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
     }
     this.driver = options.driver ?? createFirebaseSdkDriver()
     this.eventId = options.eventId
-    this.includePublishedSnapshot = options.includePublishedSnapshot ?? true
+    this.includePublishedSnapshot = options.includePublishedSnapshot ?? false
     this.participantId = options.participantId
     this.publicSlug = options.publicSlug ?? options.eventId
     this.role = options.role
@@ -358,6 +358,27 @@ export class FirebaseEventBackend implements FirebaseBackend {
         ? result.expiresAt
         : new Date(Date.now() + (result.expiresInSeconds ?? 30) * 1_000).toISOString(),
       pin: result.pin,
+    }
+  }
+
+  async manageJoinAccessCode(
+    action: 'reveal' | 'rotate',
+  ): Promise<{ code: string; expiresAt: string }> {
+    if (!this.driver.currentUser()) throw new Error('관리자 로그인 후 다시 시도해주세요.')
+    const raw = await this.driver.invoke<unknown>(FIREBASE_CALLABLES.manageJoinAccessCode, {
+      action,
+      eventId: this.eventId,
+    })
+    const result = commandResult<{
+      code: string
+      expiresInSeconds?: number
+    }>(raw).value
+    if (!result || typeof result.code !== 'string' || !/^\d{6}$/.test(result.code)) {
+      throw new Error('신규 입장 키 서버가 올바르지 않은 응답을 반환했습니다.')
+    }
+    return {
+      code: result.code,
+      expiresAt: new Date(Date.now() + (result.expiresInSeconds ?? 30) * 1_000).toISOString(),
     }
   }
 
@@ -468,6 +489,8 @@ export class FirebaseEventBackend implements FirebaseBackend {
     const ready = new Set<string>()
     const unsubscribers: Array<() => void> = []
     const messageUnsubscribers = new Map<string, () => void>()
+    let participantStageUnsubscribers: Array<() => void> = []
+    let participantActiveSlideId = ''
     const messagesByThread = new Map<string, FirebaseDocumentRecord[]>()
     let rawReviewThreads: FirebaseDocumentRecord[] = []
     let revealedAnswers: FirebaseDocumentRecord[] = []
@@ -589,10 +612,12 @@ export class FirebaseEventBackend implements FirebaseBackend {
     const watchDocument = (
       key: 'event' | 'live' | 'publishedSnapshot' | 'synthesis',
       path: string,
+      onValue?: (document: FirebaseDocumentRecord | null) => void,
     ) => {
       unsubscribers.push(this.driver.watchDocument(path, (snapshot: FirebaseDocumentSnapshotRecord) => {
         bundle[key] = snapshot.document
         rememberMetadata(key, snapshot)
+        onValue?.(snapshot.document)
         emit()
       }, onError))
     }
@@ -675,6 +700,50 @@ export class FirebaseEventBackend implements FirebaseBackend {
       )
     }
 
+    const watchParticipantStage = (slideId: string) => {
+      if (this.role !== 'participant' || !slideId || participantActiveSlideId === slideId) return
+      participantActiveSlideId = slideId
+      participantStageUnsubscribers.forEach((unsubscribe) => unsubscribe())
+      participantStageUnsubscribers = []
+      revealedAnswers = []
+      bundle.answers = this.mergeDocuments(revealedAnswers, ownAnswers)
+      bundle.comments = []
+      participantStageUnsubscribers.push(this.driver.watchCollection(
+        {
+          limit: 100,
+          path: `events/${this.eventId}/answers`,
+          where: [
+            { field: 'slideId', op: '==', value: slideId },
+            { field: 'visibility', op: '==', value: 'revealed' },
+          ],
+        },
+        (snapshot) => {
+          revealedAnswers = snapshot.documents
+          bundle.answers = this.mergeDocuments(revealedAnswers, ownAnswers)
+          rememberMetadata('participantStageAnswers', snapshot)
+          emit()
+        },
+        onError,
+      ))
+      participantStageUnsubscribers.push(this.driver.watchCollection(
+        {
+          limit: 300,
+          path: `events/${this.eventId}/discussionComments`,
+          where: [
+            { field: 'slideId', op: '==', value: slideId },
+            { field: 'visibility', op: '==', value: 'event' },
+          ],
+        },
+        (snapshot) => {
+          bundle.comments = snapshot.documents
+          rememberMetadata('participantStageComments', snapshot)
+          emit()
+        },
+        onError,
+      ))
+      emit()
+    }
+
     const publicPath = `publicEvents/${this.publicSlug}`
     if (this.role === 'public' || this.includePublishedSnapshot) {
       unsubscribers.push(this.driver.watchDocument(publicPath, (snapshot) => {
@@ -741,7 +810,12 @@ export class FirebaseEventBackend implements FirebaseBackend {
 
     const eventPath = `events/${this.eventId}`
     watchDocument('event', eventPath)
-    watchDocument('live', `${eventPath}/live/state`)
+    watchDocument('live', `${eventPath}/live/state`, (document) => {
+      const slideId = typeof document?.data.activeSlideId === 'string'
+        ? document.data.activeSlideId
+        : ''
+      watchParticipantStage(slideId)
+    })
     watchCollection('slides', `${eventPath}/slides`, {
       limit: LISTENER_LIMITS.slides,
       path: `${eventPath}/slides`,
@@ -771,25 +845,12 @@ export class FirebaseEventBackend implements FirebaseBackend {
         where: [{ field: 'ownerParticipantId', op: '==', value: participantId }],
       })
       watchCollection('answers', `${eventPath}/answers`, {
-        limit: LISTENER_LIMITS.answers,
-        path: `${eventPath}/answers`,
-        where: [{ field: 'visibility', op: '==', value: 'revealed' }],
-      }, (documents) => {
-        revealedAnswers = documents
-        bundle.answers = this.mergeDocuments(revealedAnswers, ownAnswers)
-      })
-      watchCollection('answers', `${eventPath}/answers`, {
         limit: 4,
         path: `${eventPath}/answers`,
         where: [{ field: 'ownerParticipantId', op: '==', value: participantId }],
       }, (documents) => {
         ownAnswers = documents
         bundle.answers = this.mergeDocuments(revealedAnswers, ownAnswers)
-      })
-      watchCollection('comments', `${eventPath}/discussionComments`, {
-        limit: LISTENER_LIMITS.comments,
-        path: `${eventPath}/discussionComments`,
-        where: [{ field: 'visibility', op: '==', value: 'event' }],
       })
       watchDocument('synthesis', `${eventPath}/synthesis/current`)
       watchCollection('projectDrafts', `${eventPath}/projectDrafts`, {
@@ -807,6 +868,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
 
     return () => {
       active = false
+      participantStageUnsubscribers.forEach((unsubscribe) => unsubscribe())
       publicProjectUnsubscribe?.()
       publicRevisionUnsubscribers.forEach((unsubscribe) => unsubscribe())
       messageUnsubscribers.forEach((unsubscribe) => unsubscribe())

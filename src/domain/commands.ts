@@ -631,6 +631,25 @@ export function executePlatformCommand(
       )
     }
 
+    case 'REVOKE_ADMIN': {
+      const invite = state.adminInvites.find(({ id }) => id === command.inviteId)
+      if (!invite || (invite.status !== 'accepted' && invite.status !== 'pending')) {
+        return error(state, 'NOT_FOUND', '취소할 관리자 초대 또는 권한을 찾을 수 없어요.')
+      }
+      const revoked = { ...invite, status: 'revoked' as const }
+      return success(
+        state,
+        {
+          ...state,
+          adminInvites: state.adminInvites.map((candidate) =>
+            candidate.id === revoked.id ? revoked : candidate,
+          ),
+        },
+        revoked,
+        invite.status === 'pending' ? '관리자 초대를 취소했어요.' : '관리자 권한을 해제했어요.',
+      )
+    }
+
     case 'UPDATE_SYNTHESIS': {
       const input = command.input
       const themeIds = input.themeIds?.filter((id) => state.themes.some((theme) => theme.id === id))

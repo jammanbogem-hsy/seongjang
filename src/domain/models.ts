@@ -6,7 +6,7 @@ export type ParticipantStatus = 'online' | 'offline'
 export type TimerStatus = 'idle' | 'running' | 'paused' | 'complete'
 export type AnswerStatus = 'draft' | 'submitted'
 export type SubmissionStatus = 'draft' | 'submitted'
-export type InvitationStatus = 'pending' | 'accepted'
+export type InvitationStatus = 'pending' | 'accepted' | 'revoked'
 export type NicknamePolicy = 'nickname' | 'anonymous'
 export type ReviewTargetType = 'answer' | 'submission'
 export type ReviewAuthorRole = 'organizer' | 'participant'
@@ -20,6 +20,7 @@ export interface Room {
   organizerName: string
   eventDate: string
   capacity: number
+  participantCount?: number
 }
 
 export interface Participant {
@@ -34,6 +35,7 @@ export interface Participant {
 }
 
 export interface AdminInvite {
+  acceptedBy?: Identifier
   id: Identifier
   email: string
   status: InvitationStatus
@@ -271,6 +273,7 @@ export type CommandResult<T = undefined> =
   | { ok: false; error: CommandError }
 
 export interface JoinParticipantInput {
+  entryCode?: string
   roomCode: string
   nickname: string
   pin: string
@@ -364,6 +367,7 @@ export type PlatformCommand =
   | { type: 'SET_REVIEW_THREAD_STATUS'; input: SetReviewThreadStatusInput }
   | { type: 'SUBMIT_PROJECT'; input: SubmitProjectInput }
   | { type: 'INVITE_ADMIN'; email: string }
+  | { type: 'REVOKE_ADMIN'; inviteId: Identifier }
   | { type: 'ACCEPT_ADMIN_INVITE'; inviteId: Identifier }
   | { type: 'UPDATE_SYNTHESIS'; input: UpdateSynthesisInput }
   | { type: 'PUBLISH_SYNTHESIS' }

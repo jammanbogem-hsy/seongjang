@@ -97,6 +97,7 @@ function roomFromPublic(snapshot: PublishedSnapshot): Room {
   return {
     id: snapshot.data.roomCode,
     capacity: snapshot.data.capacity,
+    participantCount: snapshot.data.metrics.participantCount,
     code: snapshot.data.roomCode,
     eventDate: snapshot.data.eventDate,
     organizerName: snapshot.data.organizerName,
@@ -112,6 +113,7 @@ function parseRoom(event: FirebaseDocumentRecord | null, snapshot: PublishedSnap
   return {
     id: text(data.id, event.id),
     capacity: number(data.capacity, 100),
+    participantCount: number(event.data.participantCount, number(data.participantCount)),
     code: text(data.code),
     eventDate: text(data.eventDate),
     organizerName: text(data.organizerName),
@@ -363,10 +365,11 @@ function parseInvites(records: FirebaseDocumentRecord[]): AdminInvite[] {
   return records.map((record) => {
     const data = documentData(record)
     return {
+      acceptedBy: text(data.acceptedBy) || undefined,
       id: record.id,
       email: text(data.email),
       invitedAt: iso(data.invitedAt),
-      status: data.status === 'accepted' ? 'accepted' : 'pending',
+      status: data.status === 'accepted' || data.status === 'revoked' ? data.status : 'pending',
     }
   })
 }

@@ -6,7 +6,7 @@
 
 ## 현재 보호장치
 
-- 월 10,000원 프로젝 예산 알림: 실제 사용액 50%, 90%, 100%에서 알림
+- 월 10,000원 프로젝트 예산 알림: 실제 사용액 50%, 90%, 100%에서 알림
 - Firestore 삭제 보호 활성화, PITR 비활성화
 - Functions v2: `minInstances: 0`, `maxInstances: 10`, 인스턴스당 동시성 40, 메모리 256 MiB
 - PIN 비밀키는 Secret Manager에 보관하고 모든 callable에 App Check 강제

@@ -154,7 +154,7 @@ export function ReviewThreadsPanel({
   const composerAutosave = useAutosave({
     enabled: mode === 'organizer' && Boolean(composer.body),
     fingerprint: JSON.stringify(composer),
-    save: () => savePrivateDraft('review-composer', `${targetType}-${targetId}`, composer),
+    save: () => savePrivateDraft('review-composer', targetId, composer),
     saveOnMount: mode === 'organizer' && Boolean(composer.body),
   })
   const threads = useMemo(

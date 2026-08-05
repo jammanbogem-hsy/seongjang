@@ -125,6 +125,7 @@ export type FirebaseAuthoritativeCommand =
   | { type: 'SET_REVIEW_THREAD_STATUS'; status: 'open' | 'resolved'; threadId: string }
   | { type: 'SUBMIT_PROJECT' }
   | { type: 'INVITE_ADMIN'; email: string }
+  | { type: 'REVOKE_ADMIN'; inviteId: string }
   | {
       type: 'UPDATE_SYNTHESIS'
       expectedRevision: number
@@ -144,6 +145,7 @@ export interface FirebaseCommandSuccess<T = unknown> {
 
 export interface FirebaseBackend {
   execute<T = unknown>(command: FirebaseAuthoritativeCommand): Promise<FirebaseCommandSuccess<T>>
+  manageJoinAccessCode(action: 'reveal' | 'rotate'): Promise<{ code: string; expiresAt: string }>
   revealParticipantPin(participantId: string, reason: string): Promise<{ expiresAt: string; pin: string }>
   saveAnswerDraft(
     request: SaveAnswerDraftRequest,

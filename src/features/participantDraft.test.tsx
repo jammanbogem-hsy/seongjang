@@ -144,11 +144,11 @@ describe('participant answer draft state', () => {
         answer.participantId === participantId && answer.slideId === slideId
       ),
     )
-    window.localStorage.setItem(
+    window.sessionStorage.setItem(
       `vibecoding.answer-drafts.${participantId}`,
       JSON.stringify({ [slideId]: '다른 기기보다 오래된 복구 초안' }),
     )
-    window.localStorage.setItem(
+    window.sessionStorage.setItem(
       `vibecoding.answer-drafts.${participantId}.base-updated-at`,
       JSON.stringify({ [slideId]: '2025-01-01T00:00:00.000Z' }),
     )

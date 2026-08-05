@@ -48,12 +48,13 @@ npm --prefix functions run check
 - Material Design 3 토큰·컴포넌트 규칙을 따른 UI와 Material Symbols
 - 반응형 주최자 콘솔, 집중형 참여자 화면, 공개 전시 레이아웃
 - Firebase Authentication: Google 주최자 계정, 일회용 이메일 관리자 초대, 익명 사전 인증 후 닉네임·PIN 기반 참여자 custom token
-- Cloud Firestore: 서울 `asia-northeast3`, 멀티 탭 영속 캐시, 실시간 listener
+- Cloud Firestore: 서울 `asia-northeast3`, 운영 메모리 캐시, 실시간 listener
 - Cloud Functions v2: 참여/재입장, 진행 제어, 제출, 댓글, 비공개 검토, 관리자 초대, 발행, PIN 감사 조회
 - 비용 가드: Functions 최대 10 instance·40 concurrent request, 유한 listener, 화면별 공개 shard 로딩
 - Firestore Security Rules: 기본 거부, 행사 멤버 역할과 참여자 소유 초안에 따른 최소 권한
 - Firebase App Check: reCAPTCHA Enterprise 권장 위험 기준 `0.5`로 Firestore와 callable Functions 요청 검증
 - HMAC 익명화된 인증 세션·기기·IP 계층형 입장 제한과 Firestore TTL 자동 정리
+- 신규 닉네임용 6자리 입장 키와 기존 참여자용 4자리 PIN을 분리하고, 민감 인증 함수는 전용 최소권한 서비스 계정에서 실행
 - 답변·작품·댓글·검토 작성란·정리 세션 자동저장과 서버 확인 상태
 - 답변·작품 draft 리비전의 원자적 증가와 정리 세션 낙관적 잠금으로 다중 기기·다중 관리자 덮어쓰기 방지
 - 불변 공개 리비전의 `stages`, `answers`, `comments`, `projects`, `themes` shard에서 대시보드와 전시 구성
@@ -74,13 +75,15 @@ firebase deploy --only firestore:rules,firestore:indexes,functions,hosting
 
 Functions의 공개 설정은 `functions/.env.vibecoding-a3ada`, PIN 암호화 키는 Firebase Secret Manager의 `PARTICIPANT_SECRET_KEY`에서 관리합니다. 비밀값은 저장소에 포함하지 않습니다.
 
+운영 Functions는 일반 행사 명령과 PIN·입장 인증을 서로 다른 서비스 계정으로 분리합니다. 브라우저 API 키는 두 Firebase Hosting 도메인에서만 사용할 수 있고, 운영 빌드를 로컬에서 열면 실제 데이터 대신 Emulator 연결을 요구합니다. 배포 후에는 `/join/VIBE26`에서 행사 정보와 현재 입장 인원을 확인하고, 주최자 화면에서 신규 입장 키를 전달합니다.
+
 운영 무료 구간, 예산 알림, 과금 위험과 행사 전후 확인사항은 [Firebase 운영 비용 가드](docs/FIREBASE_COSTS.md)에 정리했습니다.
 
 ## 입력된 행사 데이터
 
 `room-vibe26`에는 제품 흐름을 확인할 수 있는 큐레이션 데이터가 입력되어 있습니다.
 
-- 참여자 24명, 정원 100명
+- 참여자 24명, 정원 100명(공개 입장 화면에는 인원 수만 표시)
 - 단계 슬라이드 4개와 개인 답변 18개
 - 공개 댓글 4개와 비공개 검토 스레드 2개
 - 개인 작품 6개와 공통 테마 3개
@@ -91,7 +94,7 @@ Functions의 공개 설정은 `functions/.env.vibecoding-a3ada`, PIN 암호화 �
 
 핵심 제품 흐름은 Firebase에 연결되어 있습니다. 관리자 초대 메일, App Check 강제 적용, 서울 리전 Functions와 입장 요청 제한도 활성화되어 있습니다. 실제 행사 전에는 아래 항목을 현장 조건에 맞춰 확인합니다.
 
-- 100명 동시 입장·자동저장 부하 리허설과 현장 네트워크 대응
+- 100명 동시 입장·자동저장 부하 리허설과 현장 네트워크 대응(Functions 최대 동시 처리 400요청, 정원 서버 검증)
 - 작품 이미지 업로드를 열 경우 Storage MIME 검사와 메타데이터 제거
 - 외부 iframe 허용 origin, CSP와 내보내기 파일 무결성 정책
 

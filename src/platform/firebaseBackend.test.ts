@@ -98,6 +98,7 @@ describe('Firebase production boundary', () => {
     driver.emitDocument('publicEvents/vibecoding-2026', 'vibecoding-2026', {
       latestRevision: 7,
       join: {
+        participantCount: 24,
         room: { code: 'VIBE26', capacity: 100 },
         slides: [],
         live: { activeSlideIndex: 0, timerStatus: 'idle' },
@@ -107,6 +108,41 @@ describe('Firebase production boundary', () => {
     expect(driver.collectionSpecs).toEqual([])
     expect(listener.mock.calls.at(-1)?.[0].state.publishedSnapshot).toBeNull()
     expect(listener.mock.calls.at(-1)?.[0].state.room.code).toBe('VIBE26')
+    expect(listener.mock.calls.at(-1)?.[0].state.room.participantCount).toBe(24)
+    unsubscribe()
+  })
+
+  it('subscribes participant-visible answers and comments only for the active stage', () => {
+    const driver = new FakeDriver()
+    const backend = createFirebaseEventBackend({
+      driver,
+      eventId: 'room-vibe26',
+      participantId: 'participant-01',
+      role: 'participant',
+    })
+    const unsubscribe = backend.subscribe(() => undefined)
+
+    driver.emitDocument('events/room-vibe26/live/state', 'state', {
+      activeSlideId: 'stage-build',
+      timerStatus: 'idle',
+    })
+
+    expect(driver.collectionSpecs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: 'events/room-vibe26/answers',
+        where: expect.arrayContaining([
+          { field: 'slideId', op: '==', value: 'stage-build' },
+          { field: 'visibility', op: '==', value: 'revealed' },
+        ]),
+      }),
+      expect.objectContaining({
+        path: 'events/room-vibe26/discussionComments',
+        where: expect.arrayContaining([
+          { field: 'slideId', op: '==', value: 'stage-build' },
+          { field: 'visibility', op: '==', value: 'event' },
+        ]),
+      }),
+    ]))
     unsubscribe()
   })
 
@@ -241,7 +277,12 @@ describe('Firebase production boundary', () => {
 
   it('keeps post-submission answer and project drafts available after reconnecting', () => {
     const snapshot = assembleFirebaseSnapshot({
-      adminInvites: [],
+      adminInvites: [{ id: 'invite-01', data: {
+        acceptedBy: 'admin-user',
+        email: 'admin@example.com',
+        invitedAt: '2026-08-05T11:00:00.000Z',
+        status: 'accepted',
+      } }],
       answerDrafts: [{ id: 'participant-01__stage-build', data: {
         content: '제출 뒤에 고친 답변',
         ownerParticipantId: 'participant-01',
@@ -288,6 +329,10 @@ describe('Firebase production boundary', () => {
       { content: '제출 뒤에 고친 답변', status: 'draft' },
       { content: '먼저 제출한 답변', status: 'submitted' },
     ])
+    expect(snapshot?.state.adminInvites[0]).toMatchObject({
+      acceptedBy: 'admin-user',
+      status: 'accepted',
+    })
     expect(snapshot?.state.submissions.map(({ status, title }) => ({ status, title }))).toEqual([
       { status: 'draft', title: '수정 중인 작품' },
       { status: 'submitted', title: '제출한 작품' },
@@ -299,6 +344,7 @@ describe('Firebase production boundary', () => {
     const backend = createFirebaseEventBackend({
       driver,
       eventId: 'room-vibe26',
+      includePublishedSnapshot: true,
       publicSlug: 'vibecoding-2026',
       role: 'public',
     })

@@ -263,14 +263,16 @@ export function JoinPage() {
   const { notify, renderToasts } = useNotices()
   const [nickname, setNickname] = useState('')
   const [pin, setPin] = useState('')
+  const [entryCode, setEntryCode] = useState('')
   const [error, setError] = useState('')
   const participantCount = state.participants.length ||
+    state.room.participantCount ||
     state.publishedSnapshot?.data.metrics.participantCount ||
     0
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    const result = await joinParticipant({ roomCode, nickname, pin })
+    const result = await joinParticipant({ roomCode, nickname, pin, entryCode })
     if (result.ok) {
       notify(result.notice ?? '입장했어요.')
       navigate(`/events/${EVENT_ID}/live`)
@@ -311,6 +313,18 @@ export function JoinPage() {
                 required
                 type="password"
                 value={pin}
+              />
+              <Field
+                autoComplete="one-time-code"
+                helpText="처음 만드는 닉네임에만 필요합니다. 재입장이라면 비워두세요."
+                inputMode="numeric"
+                label="신규 입장 키 6자리"
+                maxLength={6}
+                onChange={(event) => { setEntryCode(event.target.value.replace(/\D/g, '').slice(0, 6)); setError('') }}
+                pattern="[0-9]{6}"
+                placeholder="주최자에게 확인"
+                type="password"
+                value={entryCode}
               />
               <Button fullWidth size="lg" trailingIcon="arrow_forward" type="submit">입장하고 시작하기</Button>
             </form>
@@ -850,7 +864,7 @@ export function SubmissionPage() {
   }
   const projectDraftKey = `vibecoding.project-draft.${currentParticipant?.id ?? 'guest'}`
   const hasStoredProjectDraft = typeof window !== 'undefined'
-    && window.localStorage.getItem(projectDraftKey) !== null
+    && window.sessionStorage.getItem(projectDraftKey) !== null
   const [form, setForm] = usePersistentDraft(
     projectDraftKey,
     projectFallback,
@@ -1190,7 +1204,7 @@ export function OrganizerControlPage() {
 type OperationsSection = 'participants' | 'submissions' | 'admins' | 'portability'
 
 export function OrganizerOperationsPage({ section }: { section: OperationsSection }) {
-  const { dispatchAsync, revealParticipantPin, state } = usePlatform()
+  const { authRole, dispatchAsync, manageJoinAccessCode, revealParticipantPin, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
   const [query, setQuery] = useState('')
   const [pinParticipant, setPinParticipant] = useState<Participant | null>(null)
@@ -1198,6 +1212,8 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
   const [pinVisible, setPinVisible] = useState(false)
   const [revealedPin, setRevealedPin] = useState('')
   const [pinLoading, setPinLoading] = useState(false)
+  const [joinAccessCode, setJoinAccessCode] = useState('')
+  const [joinCodeLoading, setJoinCodeLoading] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [reviewSubmissionId, setReviewSubmissionId] = useState<string | null>(null)
   const [exhibitionUpdating, setExhibitionUpdating] = useState(false)
@@ -1216,9 +1232,32 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
 
   useEffect(() => {
     if (!pinVisible) return
-    const timeout = window.setTimeout(() => setPinVisible(false), 30_000)
-    return () => window.clearTimeout(timeout)
+    const clearPin = () => {
+      setPinVisible(false)
+      setRevealedPin('')
+    }
+    const timeout = window.setTimeout(clearPin, 30_000)
+    document.addEventListener('visibilitychange', clearPin)
+    window.addEventListener('pagehide', clearPin)
+    return () => {
+      window.clearTimeout(timeout)
+      document.removeEventListener('visibilitychange', clearPin)
+      window.removeEventListener('pagehide', clearPin)
+    }
   }, [pinParticipant?.id, pinVisible])
+
+  useEffect(() => {
+    if (!joinAccessCode) return
+    const clearCode = () => setJoinAccessCode('')
+    const timeout = window.setTimeout(clearCode, 30_000)
+    document.addEventListener('visibilitychange', clearCode)
+    window.addEventListener('pagehide', clearCode)
+    return () => {
+      window.clearTimeout(timeout)
+      document.removeEventListener('visibilitychange', clearCode)
+      window.removeEventListener('pagehide', clearCode)
+    }
+  }, [joinAccessCode])
 
   function closePinDialog() {
     setPinVisible(false)
@@ -1239,6 +1278,20 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
     event.preventDefault()
     const ok = announceResult(await dispatchAsync({ type: 'INVITE_ADMIN', email: inviteEmail }), notify)
     if (ok) setInviteEmail('')
+  }
+
+  async function manageEntryCode(action: 'reveal' | 'rotate') {
+    setJoinCodeLoading(true)
+    try {
+      const result = await manageJoinAccessCode(action)
+      if (announceResult(result, notify)) setJoinAccessCode(result.ok ? result.value : '')
+    } finally {
+      setJoinCodeLoading(false)
+    }
+  }
+
+  async function revokeAdmin(inviteId: string) {
+    announceResult(await dispatchAsync({ type: 'REVOKE_ADMIN', inviteId }), notify)
   }
 
   async function revealPin() {
@@ -1287,6 +1340,21 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
               <StatCard icon="history" label="최근 활동" trend="마지막 저장 기준" value={`${state.participants.filter((participant) => Date.now() - Date.parse(participant.lastSeenAt) < 15 * 60_000).length}명`} />
               <StatCard icon="assignment_turned_in" label="개인 제출" value={`${state.submissions.filter((submission) => submission.status === 'submitted').length}명`} />
             </div>
+            <Card padding="lg" tone="subtle">
+              <SectionHeader
+                actions={(
+                  <div className="button-row">
+                    <Button disabled={joinCodeLoading} leadingIcon="visibility" onClick={() => { void manageEntryCode('reveal') }} variant="outlined">입장 키 확인</Button>
+                    <Button disabled={joinCodeLoading} leadingIcon="autorenew" onClick={() => { void manageEntryCode('rotate') }}>새 키 발급</Button>
+                  </div>
+                )}
+                description="신규 닉네임 등록에만 필요한 6자리 키입니다. 현장 참여자에게만 공유하고 노출되었다면 즉시 교체하세요."
+                eyebrow="SECURE ADMISSION"
+                title="신규 참여자 입장 키"
+                titleAs="h2"
+              />
+              {joinAccessCode ? <div className="pin-reveal"><span>{joinAccessCode}</span><p>30초 뒤 이 기기에서 자동으로 지워집니다.</p></div> : null}
+            </Card>
             <OutcomeNote tone="warm"><strong>PIN 조회 정책</strong><br />재입장 지원이 필요한 경우에만 조회 사유를 입력하세요. 한 번에 한 명의 PIN을 30초 동안 확인할 수 있습니다.</OutcomeNote>
             <Card padding="lg">
               <div className="split mobile-stack operations-filter">
@@ -1375,19 +1443,32 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
             <div className="grid two">
               <Card padding="lg">
                 <SectionHeader description="동일 이메일의 Google 계정으로 수락하는 흐름입니다." eyebrow="EMAIL INVITE" title="관리자 초대" titleAs="h2" />
-                <form className="form-grid" onSubmit={invite}>
+                {authRole === 'owner' ? <form className="form-grid" onSubmit={invite}>
                   <Field label="이메일 주소" onChange={(event) => setInviteEmail(event.target.value)} placeholder="admin@example.com" required type="email" value={inviteEmail} />
                   <Button leadingIcon="person_add" type="submit">초대 보내기</Button>
-                </form>
+                </form> : <OutcomeNote tone="warm">관리자 초대와 해제는 행사 Owner만 할 수 있습니다.</OutcomeNote>}
                 <OutcomeNote>Firebase Authentication의 일회용 로그인 링크가 발송되며, 초대받은 이메일만 권한을 수락할 수 있습니다.</OutcomeNote>
               </Card>
               <Card padding="lg">
                 <SectionHeader description="Owner 1명과 초대된 관리자" eyebrow="ACCESS LIST" title="현재 권한" titleAs="h2" />
                 <div className="list">
                   <div className="list-item"><span className="avatar">V</span><span className="list-main"><span className="list-title">jammanbogem@gmail.com</span><span className="list-subtitle">행사 생성자</span></span><Chip tone="primary">Owner</Chip></div>
-                  {state.adminInvites.map((invite) => (
-                    <div className="list-item" key={invite.id}><span className="avatar">A</span><span className="list-main"><span className="list-title">{invite.email}</span><span className="list-subtitle">{formatDate(invite.invitedAt)}</span></span><Chip tone={invite.status === 'accepted' ? 'success' : 'warning'}>{invite.status === 'accepted' ? '수락됨' : '대기 중'}</Chip></div>
-                  ))}
+                  {state.adminInvites.map((invite) => {
+                    const statusLabel = invite.status === 'accepted' ? '수락됨' : invite.status === 'revoked' ? '해제됨' : '대기 중'
+                    const statusTone = invite.status === 'accepted' ? 'success' : invite.status === 'revoked' ? 'neutral' : 'warning'
+                    return (
+                      <div className="list-item" key={invite.id}>
+                        <span className="avatar">A</span>
+                        <span className="list-main"><span className="list-title">{invite.email}</span><span className="list-subtitle">{formatDate(invite.invitedAt)}</span></span>
+                        <Chip tone={statusTone}>{statusLabel}</Chip>
+                        {authRole === 'owner' && (invite.status === 'pending' || (invite.status === 'accepted' && invite.acceptedBy)) ? (
+                          <Button onClick={() => { void revokeAdmin(invite.id) }} size="sm" variant="danger">
+                            {invite.status === 'pending' ? '초대 취소' : '권한 해제'}
+                          </Button>
+                        ) : null}
+                      </div>
+                    )
+                  })}
                 </div>
               </Card>
             </div>

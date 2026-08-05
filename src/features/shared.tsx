@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from '../app/router'
 import type { CommandResult } from '../domain/models'
 import { AppShell, type AppNavItem } from '../layouts'
@@ -78,6 +78,23 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
   } = usePlatform()
   const [signingIn, setSigningIn] = useState(false)
   const [authError, setAuthError] = useState('')
+
+  useEffect(() => {
+    if (authRole !== 'owner' && authRole !== 'admin') return undefined
+    const idleTimeoutMs = 30 * 60 * 1_000
+    let timeoutId = 0
+    const resetIdleTimeout = () => {
+      window.clearTimeout(timeoutId)
+      timeoutId = window.setTimeout(() => { void signOut() }, idleTimeoutMs)
+    }
+    const activityEvents: Array<keyof WindowEventMap> = ['keydown', 'pointerdown', 'scroll']
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, resetIdleTimeout, { passive: true }))
+    resetIdleTimeout()
+    return () => {
+      window.clearTimeout(timeoutId)
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, resetIdleTimeout))
+    }
+  }, [authRole, signOut])
 
   const connectOrganizer = async () => {
     setSigningIn(true)

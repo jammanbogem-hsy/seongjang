@@ -12,6 +12,22 @@
       "collectionGroup": "answers",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "slideId", "order": "ASCENDING" },
+        { "fieldPath": "visibility", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "discussionComments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "slideId", "order": "ASCENDING" },
+        { "fieldPath": "visibility", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "answers",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "ownerParticipantId", "order": "ASCENDING" },
         { "fieldPath": "submittedAt", "order": "DESCENDING" }
       ]
@@ -47,7 +63,11 @@
     { "collectionGroup": "joinRegistrationLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
     { "collectionGroup": "joinDeviceRegistrationLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
     { "collectionGroup": "joinIpRegistrationLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
+    { "collectionGroup": "joinAccessAttemptLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
     { "collectionGroup": "participantAttemptLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
-    { "collectionGroup": "participantIpAttemptLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true }
+    { "collectionGroup": "participantIpAttemptLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
+    { "collectionGroup": "participantTargetAttemptLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
+    { "collectionGroup": "participantPinRevealLimits", "fieldPath": "expiresAt", "indexes": [], "ttl": true },
+    { "collectionGroup": "auditLogs", "fieldPath": "expiresAt", "indexes": [], "ttl": true }
   ]
 }

@@ -40,6 +40,22 @@ service cloud.firestore {
         ;
     }
 
+    function validPrivateDraftTarget(eventId, data) {
+      return (data.targetType == 'comment'
+          && exists(/databases/$(database)/documents/events/$(eventId)/answers/$(data.targetId)))
+        || (data.targetType == 'comment-edit'
+          && exists(/databases/$(database)/documents/events/$(eventId)/discussionComments/$(data.targetId)))
+        || (data.targetType == 'review-reply'
+          && exists(/databases/$(database)/documents/events/$(eventId)/reviewThreads/$(data.targetId))
+          && (isOrganizer(eventId)
+            || get(/databases/$(database)/documents/events/$(eventId)/reviewThreads/$(data.targetId)).data.ownerParticipantId == request.auth.uid))
+        || (data.targetType == 'review-composer'
+          && isOrganizer(eventId)
+          && (exists(/databases/$(database)/documents/events/$(eventId)/answers/$(data.targetId))
+            || exists(/databases/$(database)/documents/events/$(eventId)/projectDrafts/$(data.targetId))
+            || exists(/databases/$(database)/documents/events/$(eventId)/submissions/$(data.targetId))));
+    }
+
     match /users/{uid}/memberships/{eventId} {
       allow get, list: if signedIn() && request.auth.uid == uid;
       allow write: if false;
@@ -54,9 +70,10 @@ service cloud.firestore {
         allow write: if false;
 
         match /drafts/{draftId} {
-          allow read: if isOrganizer(eventId) || (signedIn() && request.auth.uid == uid);
+          allow read: if signedIn() && request.auth.uid == uid;
           allow create, update: if isActiveMember(eventId)
             && request.auth.uid == uid
+            && draftId == request.resource.data.targetType + '__' + request.resource.data.targetId
             && request.resource.data.keys().hasOnly([
               'clientMutationId', 'clientUpdatedAt', 'deviceId', 'payload',
               'targetId', 'targetType', 'updatedAt'
@@ -72,6 +89,7 @@ service cloud.firestore {
             && request.resource.data.targetType in [
               'comment', 'comment-edit', 'review-composer', 'review-reply'
             ]
+            && validPrivateDraftTarget(eventId, request.resource.data)
             && request.resource.data.payload is map
             && request.resource.data.payload.keys().hasOnly(['body', 'field'])
             && request.resource.data.payload.body is string

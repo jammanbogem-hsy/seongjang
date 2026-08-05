@@ -5,6 +5,8 @@ import {
   bootstrapOwnerEmail,
   EVENT_ID,
   FUNCTION_COST_GUARDRAILS,
+  JOIN_ACCESS_SUBJECT,
+  PIN_RUNTIME_SERVICE_ACCOUNT,
   MAX_PARTICIPANTS,
   participantSecretKey,
   PUBLIC_SLUG,
@@ -50,6 +52,11 @@ function privateAnswerIdFromLegacy(legacyId: string): string {
   return privateAnswerId(index)
 }
 
+function slideIdFromLegacyAnswer(legacyId: string): string {
+  const index = Number(legacyId.split('-').at(-1)) - 1
+  return ANSWER_SEEDS[index]?.[1] ?? ''
+}
+
 function privateSubmissionIdFromLegacy(legacyId: string): string {
   const index = Number(legacyId.split('-').at(-1)) - 1
   return SUBMISSION_SEEDS[index]?.[0] ?? legacyId
@@ -73,6 +80,7 @@ export async function seedVibe26Data({
   secret,
 }: SeedVibe26Options): Promise<{ created: boolean; eventId: string; participantCount: number }> {
   const markerRef = db.doc('systemMigrations/bootstrap-vibecoding-v2')
+  const joinAccessCode = String(randomInt(0, 1_000_000)).padStart(6, '0')
   const seedParticipants = PARTICIPANT_NAMES.map((nickname, index) => ({
       accent: ACCENTS[index % ACCENTS.length]!,
       joinedAt: timestamp(new Date(Date.parse(SEED_TIME) + index * 83_000).toISOString()),
@@ -107,6 +115,10 @@ export async function seedVibe26Data({
         lifecycle: 'live',
         publicationGeneration: 0,
         registrationOpen: true,
+        encryptedJoinAccessCode: encryptPin(secret, EVENT_ID, JOIN_ACCESS_SUBJECT, joinAccessCode),
+        joinAccessCodeVerifier: createPinVerifier(secret, EVENT_ID, JOIN_ACCESS_SUBJECT, joinAccessCode),
+        joinAccessCodeRotatedAt: now,
+        joinAccessCodeRotatedBy: ownerUid,
         exhibitionPublished: true,
         publishedRevision: 1,
         createdAt: timestamp(SEED_TIME),
@@ -230,6 +242,7 @@ export async function seedVibe26Data({
           participantId: authorUid,
           authorName: participantName(authorUid),
           answerId: privateAnswerIdFromLegacy(answerId),
+          slideId: slideIdFromLegacyAnswer(answerId),
           body,
           visibility: 'event',
           createdAt: timestamp(date),
@@ -347,6 +360,7 @@ export async function seedVibe26Data({
         title: 'VibeCoding Hackathon 2026',
         tagline: '각자의 아이디어가 다음 행사의 출발점이 되는 하루',
         join: {
+          participantCount: seedParticipants.length,
           room: {
             id: EVENT_ID,
             code: 'VIBE26',
@@ -488,6 +502,7 @@ export const bootstrapVibe26 = onCall(
     region: REGION,
     enforceAppCheck: true,
     maxInstances: 1,
+    serviceAccount: PIN_RUNTIME_SERVICE_ACCOUNT,
     secrets: [participantSecretKey],
     timeoutSeconds: 120,
   },

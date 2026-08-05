@@ -9,12 +9,13 @@ import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/
 import {
   appendAuditLog,
   requireEventActor,
+  requireOwner,
   requireOrganizer,
   requireParticipant,
   requireSignedIn,
   type EventActor,
 } from './lib/authz.js'
-import { FUNCTION_COST_GUARDRAILS, REGION } from './lib/config.js'
+import { CORE_RUNTIME_SERVICE_ACCOUNT, FUNCTION_COST_GUARDRAILS, REGION } from './lib/config.js'
 import { db } from './lib/firebase.js'
 import {
   asRecord,
@@ -59,6 +60,36 @@ function commandInput(command: UnknownRecord, label: string): UnknownRecord {
 const DRAFT_GRACE_MS = 30 * 1_000
 const MAX_COMMENTS_PER_PARTICIPANT_PER_SLIDE = 20
 const MAX_COMMENTS_PER_SLIDE = 300
+const MAX_REVIEW_MESSAGES_PER_THREAD = 50
+const MIN_REVIEW_REPLY_INTERVAL_MS = 2_000
+const MAX_REVIEW_THREADS_PER_TARGET = 5
+const MAX_REVIEW_THREADS_PER_PARTICIPANT = 20
+const COMMAND_WINDOW_MS = 60_000
+const commandBuckets = new Map<string, { count: number; window: number }>()
+
+function consumeInstanceCommandBudget(eventId: string, actor: EventActor): void {
+  const window = Math.floor(Date.now() / COMMAND_WINDOW_MS)
+  const key = `${eventId}:${actor.uid}`
+  const current = commandBuckets.get(key)
+  const count = current?.window === window ? current.count + 1 : 1
+  const maximum = actor.role === 'participant' ? 60 : 120
+  if (count > maximum) {
+    throw new HttpsError('resource-exhausted', '요청이 너무 빠릅니다. 잠시 뒤 다시 시도해주세요.')
+  }
+  commandBuckets.set(key, { count, window })
+  if (commandBuckets.size > 1_000) {
+    for (const [candidate, bucket] of commandBuckets) {
+      if (bucket.window < window) commandBuckets.delete(candidate)
+    }
+  }
+}
+
+function requireRecentOwnerAuth(auth: CallableRequest<unknown>['auth']): void {
+  const authTime = Number(auth?.token.auth_time ?? 0) * 1_000
+  if (!Number.isFinite(authTime) || Date.now() - authTime > 10 * 60 * 1_000) {
+    throw new HttpsError('failed-precondition', '관리자 권한 변경 전에 Owner 계정으로 다시 인증해주세요.')
+  }
+}
 
 function assertAnswerWindow(
   live: DocumentSnapshot,
@@ -670,6 +701,14 @@ async function addReviewThread(
   const body = requiredString(input, 'body', { min: 1, max: 1_000, label: '검토 의견' })
   const threadRef = db.collection(eventPath(eventId, 'reviewThreads')).doc()
   const messageRef = threadRef.collection('messages').doc()
+  const targetCounterRef = db.doc(eventPath(
+    eventId,
+    `reviewTargetCounters/${targetType}__${targetId}`,
+  ))
+  const participantCounterRef = db.doc(eventPath(
+    eventId,
+    `reviewParticipantCounters/${participantUid}`,
+  ))
   const now = Timestamp.now()
   const thread = {
     id: threadRef.id,
@@ -680,24 +719,41 @@ async function addReviewThread(
     field: optionalString(input, 'field', 80) || '전체',
     quote: optionalString(input, 'quote', 280),
     status: 'open',
+    messageCount: 1,
+    lastOrganizerReplyAt: now,
+    lastParticipantReplyAt: null,
     createdBy: actor.uid,
     createdAt: now,
     updatedAt: now,
     resolvedAt: null,
   }
-  const batch = db.batch()
-  batch.create(threadRef, thread)
-  batch.create(messageRef, {
-    id: messageRef.id,
-    authorRole: 'organizer',
-    authorUid: actor.uid,
-    authorParticipantId: null,
-    participantId: null,
-    body,
-    createdAt: now,
-    updatedAt: now,
+  await db.runTransaction(async (transaction) => {
+    const [targetCounter, participantCounter] = await Promise.all([
+      transaction.get(targetCounterRef),
+      transaction.get(participantCounterRef),
+    ])
+    const targetCount = Number(targetCounter.get('count') ?? 0)
+    const participantCount = Number(participantCounter.get('count') ?? 0)
+    if (targetCount >= MAX_REVIEW_THREADS_PER_TARGET) {
+      throw new HttpsError('resource-exhausted', '한 자료에는 최대 5개의 검토 대화를 만들 수 있습니다.')
+    }
+    if (participantCount >= MAX_REVIEW_THREADS_PER_PARTICIPANT) {
+      throw new HttpsError('resource-exhausted', '한 참여자에게는 최대 20개의 검토 대화를 만들 수 있습니다.')
+    }
+    transaction.create(threadRef, thread)
+    transaction.create(messageRef, {
+      id: messageRef.id,
+      authorRole: 'organizer',
+      authorUid: actor.uid,
+      authorParticipantId: null,
+      participantId: null,
+      body,
+      createdAt: now,
+      updatedAt: now,
+    })
+    transaction.set(targetCounterRef, { count: targetCount + 1, updatedAt: now }, { merge: true })
+    transaction.set(participantCounterRef, { count: participantCount + 1, updatedAt: now }, { merge: true })
   })
-  await batch.commit()
   return success(thread, '참여자에게 비공개 검토 의견을 남겼습니다.')
 }
 
@@ -710,12 +766,7 @@ async function updateReviewThread(
   const input = commandInput(command, '검토 의견')
   const threadId = safeDocumentId(requiredString(input, 'threadId', { max: 128 }), '검토 의견 ID')
   const threadRef = db.doc(eventPath(eventId, `reviewThreads/${threadId}`))
-  const thread = await threadRef.get()
-  if (!thread.exists) throw new HttpsError('not-found', '검토 의견을 찾을 수 없습니다.')
   const isOrganizer = actor.role === 'owner' || actor.role === 'admin'
-  if (!isOrganizer && (thread.get('ownerParticipantId') ?? thread.get('participantUid')) !== actor.uid) {
-    throw new HttpsError('permission-denied', '이 검토 대화에 접근할 수 없습니다.')
-  }
   const now = Timestamp.now()
   if (type === 'ADD_REVIEW_REPLY') {
     const body = requiredString(input, 'body', { min: 1, max: 1_000, label: '답글' })
@@ -730,23 +781,65 @@ async function updateReviewThread(
       createdAt: now,
       updatedAt: now,
     }
-    const batch = db.batch()
-    batch.create(messageRef, message)
-    batch.update(threadRef, { updatedAt: now })
-    await batch.commit()
+    await db.runTransaction(async (transaction) => {
+      const thread = await transaction.get(threadRef)
+      if (!thread.exists) throw new HttpsError('not-found', '검토 의견을 찾을 수 없습니다.')
+      if (!isOrganizer && (thread.get('ownerParticipantId') ?? thread.get('participantUid')) !== actor.uid) {
+        throw new HttpsError('permission-denied', '이 검토 대화에 접근할 수 없습니다.')
+      }
+      const messageCount = Number(thread.get('messageCount') ?? 1)
+      if (messageCount >= MAX_REVIEW_MESSAGES_PER_THREAD) {
+        throw new HttpsError('resource-exhausted', '한 검토 대화에는 최대 50개의 메시지를 남길 수 있습니다.')
+      }
+      const actorLastReplyAt = thread.get(isOrganizer ? 'lastOrganizerReplyAt' : 'lastParticipantReplyAt')
+      if (
+        actorLastReplyAt instanceof Timestamp
+        && now.toMillis() - actorLastReplyAt.toMillis() < MIN_REVIEW_REPLY_INTERVAL_MS
+      ) {
+        throw new HttpsError('resource-exhausted', '답글은 잠시 뒤 다시 남겨주세요.')
+      }
+      transaction.create(messageRef, message)
+      transaction.update(threadRef, {
+        updatedAt: now,
+        messageCount: messageCount + 1,
+        [isOrganizer ? 'lastOrganizerReplyAt' : 'lastParticipantReplyAt']: now,
+      })
+    })
     return success(message, '검토 의견에 답글을 남겼습니다.')
   }
   const status = requiredString(input, 'status', { max: 16 })
   if (status !== 'open' && status !== 'resolved') {
     throw new HttpsError('invalid-argument', '검토 상태가 올바르지 않습니다.')
   }
-  await threadRef.update({
-    status,
-    updatedAt: now,
-    resolvedAt: status === 'resolved' ? now : null,
-    resolvedBy: status === 'resolved' ? actor.uid : null,
+  const changed = await db.runTransaction(async (transaction) => {
+    const thread = await transaction.get(threadRef)
+    if (!thread.exists) throw new HttpsError('not-found', '검토 의견을 찾을 수 없습니다.')
+    if (!isOrganizer && (thread.get('ownerParticipantId') ?? thread.get('participantUid')) !== actor.uid) {
+      throw new HttpsError('permission-denied', '이 검토 대화에 접근할 수 없습니다.')
+    }
+    if (thread.get('status') === status) return false
+    const lastChangedAt = thread.get('lastStatusChangedAt')
+    if (
+      lastChangedAt instanceof Timestamp
+      && now.toMillis() - lastChangedAt.toMillis() < MIN_REVIEW_REPLY_INTERVAL_MS
+    ) {
+      throw new HttpsError('resource-exhausted', '검토 상태는 잠시 뒤 다시 변경해주세요.')
+    }
+    transaction.update(threadRef, {
+      status,
+      updatedAt: now,
+      lastStatusChangedAt: now,
+      resolvedAt: status === 'resolved' ? now : null,
+      resolvedBy: status === 'resolved' ? actor.uid : null,
+    })
+    return true
   })
-  return success({ id: threadId, status }, status === 'resolved' ? '검토 의견을 해결 처리했습니다.' : '검토 의견을 다시 열었습니다.')
+  return success(
+    { id: threadId, status },
+    changed
+      ? (status === 'resolved' ? '검토 의견을 해결 처리했습니다.' : '검토 의견을 다시 열었습니다.')
+      : '검토 상태가 이미 반영되어 있습니다.',
+  )
 }
 
 async function inviteAdmin(eventId: string, command: UnknownRecord, actor: EventActor): Promise<CommandSuccess> {
@@ -769,9 +862,49 @@ async function inviteAdmin(eventId: string, command: UnknownRecord, actor: Event
       invitedAt: now,
       expiresAt: Timestamp.fromMillis(now.toMillis() + 7 * 24 * 60 * 60 * 1_000),
       acceptedAt: null,
+      acceptedBy: null,
+      revokedAt: null,
+      revokedBy: null,
     })
   })
   return success({ id: inviteId, email, status: 'pending' }, '관리자 초대를 준비했습니다.')
+}
+
+async function revokeAdmin(eventId: string, command: UnknownRecord, actor: EventActor): Promise<CommandSuccess> {
+  const inviteId = safeDocumentId(requiredString(command, 'inviteId', { max: 128 }), '초대 ID')
+  const inviteRef = db.doc(eventPath(eventId, `adminInvites/${inviteId}`))
+  const value = await db.runTransaction(async (transaction) => {
+    const invite = await transaction.get(inviteRef)
+    if (!invite.exists) throw new HttpsError('not-found', '관리자 초대를 찾을 수 없습니다.')
+    const status = invite.get('status')
+    if (status !== 'accepted' && status !== 'pending') {
+      throw new HttpsError('failed-precondition', '대기 중이거나 활성 상태인 관리자 초대만 취소할 수 있습니다.')
+    }
+    const now = Timestamp.now()
+    if (status === 'pending') {
+      transaction.update(inviteRef, { status: 'revoked', revokedAt: now, revokedBy: actor.uid })
+      return { id: inviteId, status: 'revoked' }
+    }
+    const acceptedBy = safeDocumentId(String(invite.get('acceptedBy') ?? ''), '관리자 ID')
+    const memberRef = db.doc(eventPath(eventId, `members/${acceptedBy}`))
+    const member = await transaction.get(memberRef)
+    if (!member.exists || member.get('role') !== 'admin') {
+      throw new HttpsError('failed-precondition', '회수할 관리자 멤버십을 확인할 수 없습니다.')
+    }
+    transaction.update(inviteRef, {
+      status: 'revoked',
+      revokedAt: now,
+      revokedBy: actor.uid,
+    })
+    transaction.update(memberRef, { status: 'revoked', revokedAt: now, revokedBy: actor.uid })
+    transaction.set(db.doc(`users/${acceptedBy}/memberships/${eventId}`), {
+      status: 'revoked',
+      revokedAt: now,
+      revokedBy: actor.uid,
+    }, { merge: true })
+    return { id: inviteId, status: 'revoked' }
+  })
+  return success(value, '관리자 권한을 즉시 회수했습니다.')
 }
 
 async function acceptAdminInvite(eventId: string, command: UnknownRecord, auth: Parameters<typeof requireSignedIn>[0]): Promise<CommandSuccess> {
@@ -864,7 +997,6 @@ const participantCommands = new Set([
 ])
 const organizerCommands = new Set([
   'ADD_REVIEW_THREAD',
-  'INVITE_ADMIN',
   'PAUSE_TIMER',
   'PUBLISH_SYNTHESIS',
   'RESET_TIMER',
@@ -877,6 +1009,7 @@ const organizerCommands = new Set([
   'START_TIMER',
   'UPDATE_SYNTHESIS',
 ])
+const ownerCommands = new Set(['INVITE_ADMIN', 'REVOKE_ADMIN'])
 
 async function executeCommand(request: CallableRequest<unknown>): Promise<CommandSuccess> {
     const payload = asRecord(request.data)
@@ -893,8 +1026,13 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
 
     let actor: EventActor
     if (participantCommands.has(type)) actor = await requireParticipant(eventId, request.auth)
+    else if (ownerCommands.has(type)) {
+      actor = await requireOwner(eventId, request.auth)
+      requireRecentOwnerAuth(request.auth)
+    }
     else if (organizerCommands.has(type)) actor = await requireOrganizer(eventId, request.auth)
     else actor = await requireEventActor(eventId, request.auth)
+    consumeInstanceCommandBudget(eventId, actor)
 
     let result: CommandSuccess
     switch (type) {
@@ -947,6 +1085,9 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
         break
       case 'INVITE_ADMIN':
         result = await inviteAdmin(eventId, command, actor)
+        break
+      case 'REVOKE_ADMIN':
+        result = await revokeAdmin(eventId, command, actor)
         break
       case 'UPDATE_SYNTHESIS':
         result = await updateSynthesis(eventId, command, actor)
@@ -1038,6 +1179,7 @@ const commandOptions = {
   ...FUNCTION_COST_GUARDRAILS,
   region: REGION,
   enforceAppCheck: true,
+  serviceAccount: CORE_RUNTIME_SERVICE_ACCOUNT,
   timeoutSeconds: 60,
 } as const
 

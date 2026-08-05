@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
 function readDraft<T>(key: string, fallback: T): T {
   if (!key || typeof window === 'undefined') return fallback
   try {
-    const serialized = window.localStorage.getItem(key)
+    const serialized = window.sessionStorage.getItem(key)
     return serialized ? JSON.parse(serialized) as T : fallback
   } catch {
     return fallback
@@ -34,14 +34,14 @@ export function usePersistentDraft<T>(
       return
     }
     try {
-      window.localStorage.setItem(key, JSON.stringify(value))
+      window.sessionStorage.setItem(key, JSON.stringify(value))
     } catch {
       // The domain autosave remains the fallback when browser draft storage is unavailable.
     }
   }, [key, value])
 
   const clear = useCallback(() => {
-    if (key && typeof window !== 'undefined') window.localStorage.removeItem(key)
+    if (key && typeof window !== 'undefined') window.sessionStorage.removeItem(key)
     setValue(fallbackRef.current)
   }, [key])
 

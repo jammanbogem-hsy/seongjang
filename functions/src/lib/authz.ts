@@ -49,6 +49,17 @@ export async function requireOrganizer(
   return actor as EventActor & { role: 'admin' | 'owner' }
 }
 
+export async function requireOwner(
+  eventId: string,
+  auth: CallableAuth,
+): Promise<EventActor & { role: 'owner' }> {
+  const actor = await requireOrganizer(eventId, auth)
+  if (actor.role !== 'owner') {
+    throw new HttpsError('permission-denied', '행사 Owner 권한이 필요합니다.')
+  }
+  return actor as EventActor & { role: 'owner' }
+}
+
 export async function requireParticipant(
   eventId: string,
   auth: CallableAuth,
@@ -70,11 +81,13 @@ export async function appendAuditLog(input: {
   targetUid?: string
 }): Promise<void> {
   const ref = db.collection(`events/${input.eventId}/auditLogs`).doc()
+  const now = new Date()
   await ref.set({
     action: input.action,
     actorRole: input.actor.role,
     actorUid: input.actor.uid,
-    createdAt: new Date(),
+    createdAt: now,
+    expiresAt: new Date(now.getTime() + 180 * 24 * 60 * 60 * 1_000),
     metadata: input.metadata ?? {},
     reason: input.reason ?? null,
     result: input.result ?? 'allowed',
