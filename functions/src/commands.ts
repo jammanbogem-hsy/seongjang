@@ -244,16 +244,20 @@ async function updateTimer(
     transaction.set(liveRef, next)
     if (type === 'START_TIMER' || type === 'RESUME_TIMER') {
       transaction.set(db.doc(`events/${eventId}`), {
+        lifecycle: 'live',
         registrationClosedAt: next.updatedAt,
         registrationOpen: false,
         updatedAt: next.updatedAt,
       }, { merge: true })
     }
-    transaction.update(
-      db.doc(publicRootPath),
-      'join.live', publicLiveProjection(next),
-      'join.updatedAt', next.updatedAt,
-    )
+    const publicPatch: Record<string, unknown> = {
+      'join.live': publicLiveProjection(next),
+      'join.updatedAt': next.updatedAt,
+    }
+    if (type === 'START_TIMER' || type === 'RESUME_TIMER') {
+      publicPatch['join.room.lifecycle'] = 'live'
+    }
+    transaction.update(db.doc(publicRootPath), publicPatch)
     return next
   })
   const notice = type === 'PAUSE_TIMER'
@@ -563,6 +567,140 @@ async function moveSlide(
     return { direction, slideId, targetIndex }
   })
   return success(value, '슬라이드 순서를 변경했습니다.')
+}
+
+async function reorderSlides(
+  eventId: string,
+  command: UnknownRecord,
+  actor: EventActor,
+): Promise<CommandSuccess> {
+  const orderedSlideIds = stringArray(command.orderedSlideIds, MAX_SLIDES, 128)
+    .map((slideId) => safeDocumentId(slideId, '슬라이드 ID'))
+  if (new Set(orderedSlideIds).size !== orderedSlideIds.length) {
+    throw new HttpsError('invalid-argument', '중복된 슬라이드가 있어 순서를 저장할 수 없습니다.')
+  }
+  const { publicRootPath } = await eventAndPublicRoot(eventId)
+  const slidesCollection = db.collection(eventPath(eventId, 'slides'))
+  const liveRef = db.doc(eventPath(eventId, 'live/state'))
+  const publicRootRef = db.doc(publicRootPath)
+  const value = await db.runTransaction(async (transaction) => {
+    const [records, live, publicRoot] = await Promise.all([
+      transaction.get(slidesCollection.orderBy('order', 'asc')),
+      transaction.get(liveRef),
+      transaction.get(publicRootRef),
+    ])
+    if (!live.exists || !publicRoot.exists) throw new HttpsError('not-found', '행사 진행 정보를 찾을 수 없습니다.')
+    const currentIds = records.docs.map((slide) => slide.id)
+    if (
+      orderedSlideIds.length !== currentIds.length
+      || currentIds.some((slideId) => !orderedSlideIds.includes(slideId))
+    ) {
+      throw new HttpsError('failed-precondition', '슬라이드 목록이 변경되었습니다. 새로고침 후 다시 정렬해주세요.')
+    }
+    const byId = new Map(records.docs.map((slide) => [slide.id, slide]))
+    const publicJoin = publicRoot.get('join') as { slides?: Array<Record<string, unknown>> } | undefined
+    if (!Array.isArray(publicJoin?.slides)) {
+      throw new HttpsError('failed-precondition', '공개 참여 화면의 슬라이드 목록을 찾을 수 없습니다.')
+    }
+    const publicById = new Map(publicJoin.slides.map((slide) => [String(slide.id ?? ''), slide]))
+    const now = Timestamp.now()
+    const publicSlides = orderedSlideIds.map((slideId, index) => ({
+      ...(publicById.get(slideId) ?? byId.get(slideId)!.data()),
+      id: slideId,
+      order: index + 1,
+    }))
+    orderedSlideIds.forEach((slideId, index) => {
+      const slide = byId.get(slideId)!
+      if (Number(slide.get('order') ?? 0) !== index + 1) {
+        transaction.update(slide.ref, { order: index + 1, updatedAt: now, updatedBy: actor.uid })
+      }
+    })
+    const activeSlideId = String(live.get('activeSlideId') ?? '')
+    const nextLive = {
+      ...live.data(),
+      activeSlideIndex: Math.max(0, orderedSlideIds.indexOf(activeSlideId)),
+      revision: revisionOf(live),
+      updatedAt: now,
+      updatedBy: actor.uid,
+    }
+    transaction.set(liveRef, nextLive)
+    transaction.update(
+      publicRootRef,
+      'join.slides', publicSlides,
+      'join.live', publicLiveProjection(nextLive),
+      'join.updatedAt', now,
+    )
+    return { activeSlideId, orderedSlideIds }
+  })
+  return success(value, '슬라이드 순서를 저장했습니다.')
+}
+
+async function endSession(
+  eventId: string,
+  actor: EventActor,
+): Promise<CommandSuccess> {
+  const { event, publicRootPath } = await eventAndPublicRoot(eventId)
+  if (event.get('lifecycle') === 'ended') return success({ eventId }, '이미 종료된 세션입니다.')
+  const eventRef = db.doc(`events/${eventId}`)
+  const liveRef = db.doc(eventPath(eventId, 'live/state'))
+  const publicRootRef = db.doc(publicRootPath)
+  const membersQuery = db.collection(eventPath(eventId, 'members'))
+  const participantsQuery = db.collection(eventPath(eventId, 'participants'))
+  const value = await db.runTransaction(async (transaction) => {
+    const [eventSnapshot, live, publicRoot, members, participants] = await Promise.all([
+      transaction.get(eventRef),
+      transaction.get(liveRef),
+      transaction.get(publicRootRef),
+      transaction.get(membersQuery),
+      transaction.get(participantsQuery),
+    ])
+    if (!eventSnapshot.exists || !live.exists || !publicRoot.exists) {
+      throw new HttpsError('not-found', '종료할 세션 정보를 찾을 수 없습니다.')
+    }
+    const now = Timestamp.now()
+    const nextLive = {
+      ...live.data(),
+      sessionStatus: 'ended',
+      timerStatus: 'complete',
+      remainingSec: 0,
+      endsAt: null,
+      revision: revisionOf(live),
+      updatedAt: now,
+      updatedBy: actor.uid,
+    }
+    transaction.update(eventRef, {
+      lifecycle: 'ended',
+      registrationOpen: false,
+      endedAt: now,
+      endedBy: actor.uid,
+      updatedAt: now,
+    })
+    transaction.set(liveRef, nextLive)
+    transaction.update(
+      publicRootRef,
+      'join.live', publicLiveProjection(nextLive),
+      'join.room.lifecycle', 'ended',
+      'join.updatedAt', now,
+    )
+    members.docs.forEach((member) => {
+      const participant = member.get('role') === 'participant'
+      transaction.set(member.ref, {
+        ...(participant ? { status: 'disabled' } : {}),
+        updatedAt: now,
+      }, { merge: true })
+      transaction.set(db.doc(`users/${member.id}/memberships/${eventId}`), {
+        lifecycle: 'ended',
+        updatedAt: now,
+      }, { merge: true })
+    })
+    participants.docs.forEach((participant) => transaction.set(participant.ref, {
+      membershipStatus: 'disabled',
+      lastSeenAt: now,
+    }, { merge: true }))
+    return { eventId, participantCount: participants.size }
+  })
+  await appendAuditLog({ action: 'event.session.end', actor, eventId, metadata: value })
+  return success(value, '세션을 종료하고 참여자 연결을 닫았습니다.')
 }
 
 async function setAnswerVisibilityAtomically(
@@ -1309,6 +1447,8 @@ const organizerCommands = new Set([
   'CREATE_SLIDE',
   'DELETE_SLIDE',
   'MOVE_SLIDE',
+  'REORDER_SLIDES',
+  'END_SESSION',
   'PAUSE_TIMER',
   'PUBLISH_SYNTHESIS',
   'RESET_TIMER',
@@ -1324,6 +1464,21 @@ const organizerCommands = new Set([
   'UPDATE_SYNTHESIS',
 ])
 const ownerCommands = new Set(['INVITE_ADMIN', 'REVOKE_ADMIN'])
+const closedSessionCommands = new Set([
+  'CREATE_SLIDE',
+  'DELETE_SLIDE',
+  'MOVE_SLIDE',
+  'REORDER_SLIDES',
+  'PAUSE_TIMER',
+  'RESET_TIMER',
+  'RESUME_TIMER',
+  'SET_ACTIVE_SLIDE',
+  'SET_ANSWERS_REVEALED',
+  'SET_COMMENTS_ENABLED',
+  'SET_TIMER_DURATION',
+  'START_TIMER',
+  'UPDATE_SLIDE',
+])
 
 async function executeCommand(request: CallableRequest<unknown>): Promise<CommandSuccess> {
     const payload = asRecord(request.data)
@@ -1347,6 +1502,12 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
     else if (organizerCommands.has(type)) actor = await requireOrganizer(eventId, request.auth)
     else actor = await requireEventActor(eventId, request.auth)
     consumeInstanceCommandBudget(eventId, actor)
+    if (closedSessionCommands.has(type)) {
+      const event = await db.doc(`events/${eventId}`).get()
+      if (event.get('lifecycle') === 'ended') {
+        throw new HttpsError('failed-precondition', '종료된 세션의 진행 화면은 변경할 수 없습니다.')
+      }
+    }
 
     let result: CommandSuccess
     switch (type) {
@@ -1372,6 +1533,12 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
         break
       case 'MOVE_SLIDE':
         result = await moveSlide(eventId, command, actor)
+        break
+      case 'REORDER_SLIDES':
+        result = await reorderSlides(eventId, command, actor)
+        break
+      case 'END_SESSION':
+        result = await endSession(eventId, actor)
         break
       case 'SET_TIMER_DURATION':
         result = await setTimerDuration(eventId, command, actor)

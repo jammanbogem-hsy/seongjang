@@ -361,27 +361,6 @@ export class FirebaseEventBackend implements FirebaseBackend {
     }
   }
 
-  async manageJoinAccessCode(
-    action: 'reveal' | 'rotate',
-  ): Promise<{ code: string; expiresAt: string }> {
-    if (!this.driver.currentUser()) throw new Error('관리자 로그인 후 다시 시도해주세요.')
-    const raw = await this.driver.invoke<unknown>(FIREBASE_CALLABLES.manageJoinAccessCode, {
-      action,
-      eventId: this.eventId,
-    })
-    const result = commandResult<{
-      code: string
-      expiresInSeconds?: number
-    }>(raw).value
-    if (!result || typeof result.code !== 'string' || !/^\d{6}$/.test(result.code)) {
-      throw new Error('신규 입장 키 서버가 올바르지 않은 응답을 반환했습니다.')
-    }
-    return {
-      code: result.code,
-      expiresAt: new Date(Date.now() + (result.expiresInSeconds ?? 30) * 1_000).toISOString(),
-    }
-  }
-
   saveAnswerDraft(
     request: SaveAnswerDraftRequest,
     onStatus?: (status: FirebaseDraftStatus) => void,

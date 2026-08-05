@@ -117,6 +117,8 @@ export type FirebaseAuthoritativeCommand =
     }
   | { type: 'DELETE_SLIDE'; slideId: string }
   | { type: 'MOVE_SLIDE'; direction: 'up' | 'down'; slideId: string }
+  | { type: 'REORDER_SLIDES'; orderedSlideIds: string[] }
+  | { type: 'END_SESSION' }
   | { type: 'SET_TIMER_DURATION'; durationSec: number }
   | { type: 'START_TIMER' | 'PAUSE_TIMER' | 'RESUME_TIMER' | 'RESET_TIMER' }
   | { type: 'SET_ANSWERS_REVEALED'; slideId: string; revealed: boolean }
@@ -165,7 +167,6 @@ export interface FirebaseCommandSuccess<T = unknown> {
 
 export interface FirebaseBackend {
   execute<T = unknown>(command: FirebaseAuthoritativeCommand): Promise<FirebaseCommandSuccess<T>>
-  manageJoinAccessCode(action: 'reveal' | 'rotate'): Promise<{ code: string; expiresAt: string }>
   revealParticipantPin(participantId: string, reason: string): Promise<{ expiresAt: string; pin: string }>
   saveAnswerDraft(
     request: SaveAnswerDraftRequest,

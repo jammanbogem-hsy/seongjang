@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-브라우저에서 `http://127.0.0.1:5173`을 엽니다. 운영 배포 주소는 [vibecoding-a3ada.web.app](https://vibecoding-a3ada.web.app)이며 행사 방 코드는 `VIBE26`입니다.
+브라우저에서 `http://127.0.0.1:5173`을 엽니다. 운영 배포 주소는 [vibecoding-a3ada.web.app](https://vibecoding-a3ada.web.app)입니다. 주최자가 세션을 만들 때마다 겹치지 않는 새 방 코드가 자동 발급됩니다.
 
 품질 검사는 아래 명령으로 실행합니다.
 
@@ -25,22 +25,24 @@ npm --prefix functions run check
 
 ## 주요 경로
 
-- `/` — 해커톤 서비스 소개와 방 입장·운영 진입
+- `/` — 방 코드 입장과 주최자·대시보드·전시 진입
 - `/ebook` — PDF 원문을 책 넘김 효과로 읽는 강의 원고 온라인 책자
-- `/join/VIBE26` — 닉네임·PIN 등록/재입장
-- `/events/room-vibe26/live` — 참여자 라이브 질문·답변·댓글
-- `/events/room-vibe26/submission` — 개인 최종 작품 제출
-- `/admin/events/room-vibe26/control` — 주최자 라이브 콘솔
-- `/admin/events/room-vibe26/participants` — 참여자와 PIN 확인 UX
-- `/admin/events/room-vibe26/synthesis` — 단계별 답변 정리와 공개 리비전 발행
-- `/admin/events/room-vibe26/admins` — Owner의 Google 이메일 관리자 초대·권한 회수
-- `/admin/events/room-vibe26/portability` — iframe/JSON/CSV/Markdown/README
+- `/admin/sessions` — 새 세션 생성과 준비·진행·종료 기록 카드
+- `/join/:roomCode` — 닉네임·4자리 PIN 등록/재입장
+- `/events/:eventId/live` — 참여자 라이브 질문·답변·댓글
+- `/events/:eventId/submission` — 개인 최종 작품 제출
+- `/admin/events/:eventId/control` — 주최자 라이브 콘솔과 슬라이드 페이지뷰
+- `/admin/events/:eventId/participants` — 참여자와 PIN 확인 UX
+- `/admin/events/:eventId/synthesis` — 단계별 답변 정리와 공개 리비전 발행
+- `/admin/events/:eventId/admins` — Owner의 Google 이메일 관리자 초대·권한 회수
+- `/admin/events/:eventId/portability` — iframe/JSON/CSV/Markdown/README
 - `/admin/invites/:inviteId` — 초대 링크를 연 동일한 Google 계정의 관리자 권한 수락
-- `/dashboards/vibecoding-2026` — 공개 수합 대시보드
-- `/exhibitions/vibecoding-2026` — 개인 작품 전시
+- `/dashboards/:slug` — 세션별 공개 수합 대시보드
+- `/exhibitions/:slug` — 세션별 개인 작품 전시
 
-주최자는 슬라이드를 새로 만들고 복제·순서 변경·삭제할 수 있으며 단계명·제목·질문·도움말을 실시간 편집할 수 있습니다. 단계별 타이머(1–180분)와 답변·댓글 공개 상태를 바꾸면 Cloud Functions가 권한을 검증하고 Firestore 트랜잭션으로 갱신하며, 연결된 참여자 화면은 실시간 listener로 같은 상태를 받습니다. 슬라이드 텍스트는 0.9초 디바운스로 자동 저장되고 타이머 시간은 슬라이드 기본값으로 유지됩니다. 답변이나 초안이 있는 슬라이드와 타이머가 진행 중인 현재 슬라이드는 기록 보호를 위해 삭제할 수 없습니다.
+주최자는 Canva처럼 하단 페이지뷰에서 슬라이드를 추가·복제·삭제하고 드래그 앤 드롭으로 순서를 바꿀 수 있으며, 단계명·제목·질문·도움말을 실시간 편집할 수 있습니다. 단계별 타이머(1–180분)와 답변·댓글 공개 상태를 바꾸면 Cloud Functions가 권한을 검증하고 Firestore 트랜잭션으로 갱신하며, 연결된 참여자 화면은 실시간 listener로 같은 상태를 받습니다. 슬라이드 텍스트는 0.9초 디바운스로 자동 저장되고 타이머 시간은 슬라이드 기본값으로 유지됩니다. 답변이나 초안이 있는 슬라이드와 타이머가 진행 중인 현재 슬라이드는 기록 보호를 위해 삭제할 수 없습니다.
 첫 타이머를 시작하거나 재개하면 신규 닉네임 등록은 서버에서 마감되고, 기존 참여자의 닉네임·4자리 PIN 재입장은 계속 허용됩니다.
+세션을 종료하면 참여자 멤버십이 비활성화되어 접속 중인 화면도 즉시 퇴장하고, 주최자의 세션 카드는 수합·전시·내보내기 기록을 계속 보존합니다.
 
 ## 제품 구조
 
@@ -56,7 +58,8 @@ npm --prefix functions run check
 - Firestore Security Rules: 기본 거부, 행사 멤버 역할·Google 로그인 공급자·참여자 소유 초안에 따른 최소 권한
 - Firebase App Check: reCAPTCHA Enterprise 권장 위험 기준 `0.5`로 Firestore와 callable Functions 요청 검증
 - HMAC 익명화된 인증 세션·기기·IP 계층형 입장 제한과 Firestore TTL 자동 정리
-- 신규 닉네임용 6자리 입장 키와 기존 참여자용 4자리 PIN을 분리하고, 민감 인증 함수는 전용 최소권한 서비스 계정에서 실행
+- 방 코드 + 닉네임 + 4자리 PIN으로 단일화한 입장 흐름과 민감 인증 전용 최소권한 서비스 계정
+- 세션별 방 코드 생성, 사용자별 세션 디렉터리, 종료 시 참여자 권한 회수와 기록 보존
 - 답변·작품·댓글·검토 작성란·슬라이드 편집·정리 세션 자동저장과 서버 확인 상태
 - 답변·작품 draft 리비전의 원자적 증가와 정리 세션 낙관적 잠금으로 다중 기기·다중 관리자 덮어쓰기 방지
 - 불변 공개 리비전의 `stages`, `answers`, `comments`, `projects`, `themes` shard에서 대시보드와 전시 구성
@@ -77,13 +80,13 @@ firebase deploy --only firestore:rules,firestore:indexes,functions,hosting
 
 Functions의 공개 설정은 `functions/.env.vibecoding-a3ada`, PIN 암호화 키는 Firebase Secret Manager의 `PARTICIPANT_SECRET_KEY`에서 관리합니다. 비밀값은 저장소에 포함하지 않습니다.
 
-운영 Functions는 일반 행사 명령과 PIN·입장 인증을 서로 다른 서비스 계정으로 분리합니다. 브라우저 API 키는 두 Firebase Hosting 도메인에서만 사용할 수 있고, 운영 빌드를 로컬에서 열면 실제 데이터 대신 Emulator 연결을 요구합니다. 배포 후에는 `/join/VIBE26`에서 행사 정보와 현재 입장 인원을 확인하고, 주최자 화면에서 신규 입장 키를 전달합니다.
+운영 Functions는 일반 행사 명령과 PIN·입장 인증을 서로 다른 서비스 계정으로 분리합니다. 브라우저 API 키는 두 Firebase Hosting 도메인에서만 사용할 수 있고, 운영 빌드를 로컬에서 열면 실제 데이터 대신 Emulator 연결을 요구합니다. 배포 후 주최자는 `/admin/sessions`에서 세션을 만들고, 발급된 방 코드만 참여자에게 전달합니다. 참여자는 각자 닉네임과 4자리 PIN을 정해 입장합니다.
 
 운영 무료 구간, 예산 알림, 과금 위험과 행사 전후 확인사항은 [Firebase 운영 비용 가드](docs/FIREBASE_COSTS.md)에 정리했습니다.
 
 ## 운영 행사 상태
 
-`room-vibe26`은 실제 행사 입력을 받기 위한 빈 상태입니다. 화면 확인용 참여자·답변·댓글·작품·공개 리비전은 Firestore에서 제거했고, 이후 초기 생성도 더미 데이터를 만들지 않습니다.
+`room-vibe26`은 기존 행사 입력을 받기 위한 빈 상태이며, 이후 세션은 `/admin/sessions`에서 개별 방 코드로 생성됩니다. 화면 확인용 참여자·답변·댓글·작품·공개 리비전은 Firestore에서 제거했고, 새 세션도 더미 사용자나 작품을 만들지 않습니다.
 
 - 소유자 `jammanbogem@gmail.com` 1명
 - 참여자 0명 / 최대 100명

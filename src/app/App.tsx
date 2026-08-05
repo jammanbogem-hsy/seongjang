@@ -10,6 +10,7 @@ import {
   NotFoundPage,
   OrganizerControlPage,
   OrganizerOperationsPage,
+  OrganizerSessionsPage,
   ParticipantLivePage,
   SubmissionPage,
   SynthesisPage,
@@ -33,11 +34,12 @@ export function App() {
         <Route element={<LandingPage />} path="/" />
         <Route element={<Suspense fallback={null}><EbookPage /></Suspense>} path="/ebook" />
         <Route element={<Navigate replace to="/" />} path="/platform" />
-        <Route element={<Navigate replace to="/join/VIBE26" />} path="/join" />
+        <Route element={<Navigate replace to="/" />} path="/join" />
         <Route element={<JoinPage />} path="/join/:roomCode" />
         <Route element={<ParticipantLivePage />} path="/events/:eventId/lobby" />
         <Route element={<ParticipantLivePage />} path="/events/:eventId/live" />
         <Route element={<SubmissionPage />} path="/events/:eventId/submission" />
+        <Route element={<OrganizerSessionsPage />} path="/admin/sessions" />
         <Route element={<OrganizerControlPage />} path="/admin/events/:eventId/control" />
         <Route element={<OrganizerOperationsPage section="participants" />} path="/admin/events/:eventId/participants" />
         <Route element={<SynthesisPage />} path="/admin/events/:eventId/synthesis" />

@@ -44,8 +44,27 @@ import {
 import type { AutosavePhase } from '../platform/useAutosave'
 import { useLocation } from './router'
 
-const FIREBASE_EVENT_ID = 'room-vibe26'
-const FIREBASE_PUBLIC_SLUG = 'vibecoding-2026'
+const LEGACY_EVENT_ID = 'room-vibe26'
+const LEGACY_PUBLIC_SLUG = 'vibecoding-2026'
+
+function routeSegment(pathname: string, pattern: RegExp): string | null {
+  const value = pathname.match(pattern)?.[1]
+  if (!value) return null
+  try { return decodeURIComponent(value) } catch { return null }
+}
+
+function eventIdFromPath(pathname: string): string | null {
+  return routeSegment(pathname, /^\/(?:admin\/)?events\/([^/]+)/)
+}
+
+function publicSlugFromPath(pathname: string, eventId: string | null): string {
+  const publicSlug = routeSegment(pathname, /^\/(?:dashboards|exhibitions)\/([^/]+)/)
+    ?? routeSegment(pathname, /^\/embed\/(?:dashboards\/)?([^/]+)/)
+    ?? routeSegment(pathname, /^\/join\/([^/]+)/)?.toLowerCase()
+  if (publicSlug) return publicSlug
+  if (!eventId || eventId === LEGACY_EVENT_ID) return LEGACY_PUBLIC_SLUG
+  return eventId.startsWith('session-') ? eventId.slice('session-'.length) : eventId
+}
 
 export type PlatformBackendPhase = 'loading' | 'ready' | 'error'
 export type PlatformAuthRole = 'owner' | 'admin' | 'participant' | null
@@ -63,7 +82,6 @@ export interface PlatformContextValue {
   dispatch: <T = unknown>(command: PlatformCommand) => CommandResult<T>
   dispatchAsync: <T = unknown>(command: PlatformCommand) => Promise<CommandResult<T>>
   joinParticipant: (input: JoinParticipantInput) => Promise<CommandResult<Participant>>
-  manageJoinAccessCode: (action: 'reveal' | 'rotate') => Promise<CommandResult<string>>
   revealParticipantPin: (participantId: string, reason: string) => Promise<CommandResult<string>>
   savePrivateDraft: (
     targetType: 'comment' | 'comment-edit' | 'review-composer' | 'review-reply',
@@ -171,7 +189,6 @@ function LocalPlatformProvider({ children }: { children: ReactNode }) {
       dispatch,
       dispatchAsync: async <T,>(command: PlatformCommand) => dispatch<T>(command),
       joinParticipant,
-      manageJoinAccessCode: async () => ({ ok: true, value: '000000' }),
       revealParticipantPin: async (participantId) => {
         const participant = stateRef.current.participants.find((item) => item.id === participantId)
         return participant
@@ -203,6 +220,10 @@ function toFirebaseCommand(
       return { type: command.type, slideId: command.slideId }
     case 'MOVE_SLIDE':
       return { type: command.type, slideId: command.slideId, direction: command.direction }
+    case 'REORDER_SLIDES':
+      return { type: command.type, orderedSlideIds: command.orderedSlideIds }
+    case 'END_SESSION':
+      return { type: command.type }
     case 'SET_TIMER_DURATION':
       return { type: command.type, durationSec: command.durationSec }
     case 'START_TIMER':
@@ -243,6 +264,15 @@ function toFirebaseCommand(
 
 function FirebasePlatformProvider({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
+  const routeEventId = eventIdFromPath(pathname)
+  const directoryMode = pathname === '/admin/sessions'
+  const publicOnlyRoute = pathname === '/'
+    || pathname.startsWith('/join/')
+    || pathname.startsWith('/dashboards/')
+    || pathname.startsWith('/embed/')
+    || pathname.startsWith('/exhibitions/')
+  const activeEventId = routeEventId ?? LEGACY_EVENT_ID
+  const activePublicSlug = publicSlugFromPath(pathname, routeEventId)
   const seedRef = useRef(createEmptyState())
   const [state, setState] = useState(seedRef.current)
   const stateRef = useRef(state)
@@ -273,18 +303,19 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!session) return
-    if (session.role === 'participant') {
-      setMembership({
-        eventId: session.eventId ?? FIREBASE_EVENT_ID,
-        participantId: session.participantId ?? session.uid,
-        role: 'participant',
-        status: 'active',
-        uid: session.uid,
-      })
+    if (directoryMode || publicOnlyRoute) {
+      setMembership(null)
       return
     }
+    if (session.role === 'participant' && routeEventId && session.eventId !== routeEventId) {
+      setMembership(null)
+      return
+    }
+    const membershipEventId = session.role === 'participant'
+      ? (session.eventId ?? activeEventId)
+      : activeEventId
     return observeFirebaseEventMembership(
-      FIREBASE_EVENT_ID,
+      membershipEventId,
       session.uid,
       (nextMembership) => {
         setMembership(nextMembership)
@@ -292,12 +323,12 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       },
       () => setMembership(null),
     )
-  }, [session])
+  }, [activeEventId, directoryMode, publicOnlyRoute, routeEventId, session])
 
   const activeMembership = membership?.status === 'active' ? membership : null
-  const projection = activeMembership?.role === 'owner' || activeMembership?.role === 'admin'
+  const projection = !publicOnlyRoute && (activeMembership?.role === 'owner' || activeMembership?.role === 'admin')
     ? { role: 'organizer' as const, participantId: undefined }
-    : activeMembership?.role === 'participant'
+    : !publicOnlyRoute && activeMembership?.role === 'participant'
       ? { role: 'participant' as const, participantId: activeMembership.participantId ?? activeMembership.uid }
       : { role: 'public' as const, participantId: undefined }
 
@@ -309,13 +340,19 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!authReady) return
+    if (directoryMode) {
+      backendRef.current = null
+      setBackendError(null)
+      setBackendPhase('ready')
+      return
+    }
     setBackendPhase('loading')
     setBackendError(null)
     const backend = createFirebaseEventBackend({
-      eventId: FIREBASE_EVENT_ID,
+      eventId: activeEventId,
       includePublishedSnapshot,
       participantId: projection.participantId,
-      publicSlug: FIREBASE_PUBLIC_SLUG,
+      publicSlug: activePublicSlug,
       role: projection.role,
     })
     backendRef.current = backend
@@ -332,7 +369,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       backendRef.current = null
       unsubscribe()
     }
-  }, [authReady, includePublishedSnapshot, projection.participantId, projection.role])
+  }, [activeEventId, activePublicSlug, authReady, directoryMode, includePublishedSnapshot, projection.participantId, projection.role])
 
   useEffect(() => {
     if (state.live.timer.status !== 'running') return
@@ -386,7 +423,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
           type: 'INVITE_ADMIN',
           email: command.email,
         })
-        await sendAdminInviteEmailLink(response.value.email, response.value.id, FIREBASE_EVENT_ID)
+        await sendAdminInviteEmailLink(response.value.email, response.value.id, activeEventId)
         return {
           ok: true,
           value: response.value as T,
@@ -402,7 +439,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       setBackendError(message)
       return commandError(message)
     }
-  }, [])
+  }, [activeEventId])
 
   const dispatch = useCallback(<T,>(command: PlatformCommand): CommandResult<T> => {
     void runRemoteCommand<T>(command)
@@ -425,6 +462,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
         notice: result.notice ?? 'Firebase에 연결해 입장했어요.',
         value: {
           id: result.participantId,
+          eventId: result.eventId,
           nickname: input.nickname.trim(),
           normalizedNickname: input.nickname.trim().toLocaleLowerCase('ko-KR'),
           pin: '',
@@ -443,12 +481,16 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
     try {
       const nextSession = await signInOrganizerWithGoogle()
       setSession(nextSession)
+      if (directoryMode) {
+        return { ok: true, value: undefined, notice: '주최자 세션 목록을 열었어요.' }
+      }
       let nextMembership: FirebaseEventMembership
       try {
-        nextMembership = await resolveFirebaseEventMembership(FIREBASE_EVENT_ID, nextSession.uid)
+        nextMembership = await resolveFirebaseEventMembership(activeEventId, nextSession.uid)
       } catch {
+        if (activeEventId !== LEGACY_EVENT_ID) throw new Error('이 세션에 대한 주최자 권한이 없습니다.')
         await bootstrapVibe26Event()
-        nextMembership = await resolveFirebaseEventMembership(FIREBASE_EVENT_ID, nextSession.uid)
+        nextMembership = await resolveFirebaseEventMembership(activeEventId, nextSession.uid)
       }
       if (
         nextMembership.status !== 'active'
@@ -462,7 +504,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
     } catch (cause) {
       return commandError(cause instanceof Error ? cause.message : '주최자 로그인에 실패했습니다.')
     }
-  }, [])
+  }, [activeEventId, directoryMode])
 
   const revealParticipantPin = useCallback(async (
     participantId: string,
@@ -474,22 +516,6 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       return { ok: true, value: result.pin, notice: '감사 기록을 남기고 PIN을 확인했어요.' }
     } catch (cause) {
       return commandError(cause instanceof Error ? cause.message : 'PIN을 확인하지 못했습니다.')
-    }
-  }, [])
-
-  const manageJoinAccessCode = useCallback(async (
-    action: 'reveal' | 'rotate',
-  ): Promise<CommandResult<string>> => {
-    try {
-      const result = await backendRef.current?.manageJoinAccessCode(action)
-      if (!result) return commandError('Firebase 연결을 준비하고 있습니다.')
-      return {
-        ok: true,
-        value: result.code,
-        notice: action === 'rotate' ? '새 신규 입장 키를 발급했어요.' : '신규 입장 키를 확인했어요.',
-      }
-    } catch (cause) {
-      return commandError(cause instanceof Error ? cause.message : '신규 입장 키를 확인하지 못했습니다.')
     }
   }, [])
 
@@ -526,12 +552,11 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
     timerView: getTimerView(state.live.timer, clock),
     backendPhase,
     backendError,
-    authRole: activeMembership?.role ?? null,
+    authRole: directoryMode && session?.email ? 'owner' : activeMembership?.role ?? null,
     authEmail: session?.email ?? null,
     dispatch,
     dispatchAsync: runRemoteCommand,
     joinParticipant,
-    manageJoinAccessCode,
     revealParticipantPin,
     savePrivateDraft,
     selectParticipant: () => undefined,
@@ -542,10 +567,10 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
     backendPhase,
     clock,
     currentSlide,
+    directoryMode,
     dispatch,
     activeMembership?.role,
     joinParticipant,
-    manageJoinAccessCode,
     revealParticipantPin,
     savePrivateDraft,
     runRemoteCommand,
@@ -562,7 +587,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
         <span className="material-symbols-rounded" aria-hidden="true">cloud_sync</span>
         <h1>Firebase 행사 데이터를 불러오고 있어요</h1>
         <p>{membership ? '인증된 행사 자료를 안전하게 동기화하고 있습니다.' : '처음 설정하는 주최자라면 Google 계정으로 연결해주세요.'}</p>
-        {!membership ? <button onClick={() => { void signInOrganizer() }} type="button">Google로 주최자 연결</button> : null}
+        {!membership && !publicOnlyRoute ? <button onClick={() => { void signInOrganizer() }} type="button">Google로 주최자 연결</button> : null}
       </div>
     )
   }

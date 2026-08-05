@@ -17,6 +17,7 @@ vi.mock('../features/pages', () => ({
   NotFoundPage: () => <p>찾을 수 없음</p>,
   OrganizerControlPage: () => <p>주최자</p>,
   OrganizerOperationsPage: () => <p>운영</p>,
+  OrganizerSessionsPage: () => <p>세션</p>,
   ParticipantLivePage: () => <p>라이브</p>,
   SubmissionPage: () => <p>제출</p>,
   SynthesisPage: () => <p>정리</p>,

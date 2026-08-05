@@ -1,11 +1,9 @@
-import { randomInt } from 'node:crypto'
 import { Timestamp } from 'firebase-admin/firestore'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import {
   bootstrapOwnerEmail,
   EVENT_ID,
   FUNCTION_COST_GUARDRAILS,
-  JOIN_ACCESS_SUBJECT,
   MAX_PARTICIPANTS,
   participantSecretKey,
   PIN_RUNTIME_SERVICE_ACCOUNT,
@@ -13,21 +11,18 @@ import {
   REGION,
 } from './lib/config.js'
 import { db } from './lib/firebase.js'
-import { createPinVerifier, encryptPin } from './lib/pin-crypto.js'
 import { normalizeEmail } from './lib/validation.js'
 import { EVENT_SLIDES } from './event-template.js'
 
 export interface SeedVibe26Options {
   email: string
   ownerUid: string
-  secret: string
 }
 
 /** Creates an empty production event. It never creates sample people or content. */
 export async function seedVibe26Data({
   email,
   ownerUid,
-  secret,
 }: SeedVibe26Options): Promise<{ created: boolean; eventId: string; participantCount: number }> {
   const markerRef = db.doc('systemMigrations/bootstrap-vibecoding-v3-clean')
   const eventRef = db.doc(`events/${EVENT_ID}`)
@@ -48,7 +43,6 @@ export async function seedVibe26Data({
     }
 
     const now = Timestamp.now()
-    const joinAccessCode = String(randomInt(0, 1_000_000)).padStart(6, '0')
     const firstSlide = EVENT_SLIDES[0]!
     const cleanSlides = EVENT_SLIDES.map((slide) => ({
       ...slide,
@@ -71,10 +65,6 @@ export async function seedVibe26Data({
       lifecycle: 'draft',
       publicationGeneration: 0,
       registrationOpen: true,
-      encryptedJoinAccessCode: encryptPin(secret, EVENT_ID, JOIN_ACCESS_SUBJECT, joinAccessCode),
-      joinAccessCodeVerifier: createPinVerifier(secret, EVENT_ID, JOIN_ACCESS_SUBJECT, joinAccessCode),
-      joinAccessCodeRotatedAt: now,
-      joinAccessCodeRotatedBy: ownerUid,
       exhibitionPublished: false,
       publishedRevision: 0,
       createdAt: now,
@@ -141,6 +131,7 @@ export async function seedVibe26Data({
           organizerName: 'VibeCoding 운영팀',
           eventDate: '2026-08-22',
           capacity: MAX_PARTICIPANTS,
+          lifecycle: 'lobby',
         },
         slides: cleanSlides.map((slide) => ({
           id: slide.id,
@@ -212,6 +203,6 @@ export const bootstrapVibe26 = onCall(
     ) {
       throw new HttpsError('permission-denied', '초기 행사 소유자 계정을 확인할 수 없습니다.')
     }
-    return seedVibe26Data({ email, ownerUid: request.auth.uid, secret: participantSecretKey.value() })
+    return seedVibe26Data({ email, ownerUid: request.auth.uid })
   },
 )

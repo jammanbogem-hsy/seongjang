@@ -1425,3 +1425,333 @@ select:focus-visible,
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Session directory */
+.session-directory {
+  padding-block: 42px 80px;
+}
+
+.session-directory__header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.session-directory__header h1 {
+  margin: 4px 0 0;
+  font-size: clamp(38px, 6vw, 64px);
+  line-height: 1;
+}
+
+.session-directory__loading {
+  padding: 40px;
+  color: var(--on-surface-variant);
+  text-align: center;
+}
+
+.session-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.session-card {
+  display: grid;
+  min-width: 0;
+  gap: 20px;
+  padding: 22px;
+  border: 1px solid var(--outline);
+  border-radius: 20px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.session-card--new {
+  width: min(100%, 400px);
+  min-height: 220px;
+  place-items: center;
+  align-content: center;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.session-card__top,
+.session-card__meta,
+.session-card__meta span {
+  display: flex;
+  align-items: center;
+}
+
+.session-card__top,
+.session-card__meta {
+  justify-content: space-between;
+  min-width: 0;
+  gap: 12px;
+  color: var(--on-surface-variant);
+  font-size: 13px;
+}
+
+.session-card__meta span {
+  min-width: 0;
+  gap: 5px;
+}
+
+.session-card__body {
+  min-width: 0;
+}
+
+.session-card__body h2 {
+  margin: 0 0 20px;
+  font-size: clamp(22px, 2.5vw, 30px);
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+}
+
+.session-room-code {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 16px;
+  border-radius: 14px;
+  background: var(--surface-container);
+}
+
+.session-room-code span {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+}
+
+.session-room-code strong {
+  color: var(--primary);
+  font-size: 22px;
+  letter-spacing: .08em;
+}
+
+/* Canva-like page strip: the live canvas stays above, pages stay in one rail. */
+.slide-filmstrip-shell {
+  overflow: hidden;
+}
+
+.slide-filmstrip-toolbar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.slide-filmstrip-toolbar > div {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.slide-filmstrip-toolbar > div span,
+.slide-drag-hint {
+  color: var(--on-surface-variant);
+  font-size: 13px;
+}
+
+.slide-drag-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.slide-filmstrip {
+  display: flex;
+  overflow-x: auto;
+  align-items: stretch;
+  gap: 12px;
+  padding: 3px 3px 12px;
+  scroll-snap-type: x proximity;
+  scrollbar-color: #bdc1c6 transparent;
+}
+
+.slide-thumbnail {
+  display: grid;
+  flex: 0 0 210px;
+  min-width: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  color: var(--ink);
+  background: var(--surface-container-low);
+  scroll-snap-align: start;
+  transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+
+.slide-thumbnail.active {
+  border-color: var(--primary);
+  background: #fff;
+}
+
+.slide-thumbnail.drag-over {
+  border-color: var(--primary);
+  transform: translateY(-3px);
+}
+
+.slide-thumbnail[aria-grabbed="true"] {
+  opacity: .58;
+}
+
+.slide-thumbnail__canvas {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  width: 100%;
+  min-height: 118px;
+  align-content: start;
+  gap: 8px;
+  padding: 14px 52px 14px 14px;
+  border: 0;
+  color: inherit;
+  background: var(--surface-container);
+  cursor: pointer;
+  text-align: left;
+}
+
+.slide-thumbnail__eyebrow {
+  overflow: hidden;
+  color: var(--primary);
+  font-size: 9px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slide-thumbnail__canvas strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.slide-thumbnail__canvas img {
+  position: absolute;
+  right: 5px;
+  bottom: 4px;
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+}
+
+.slide-thumbnail__footer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 6px 5px 9px;
+  color: var(--on-surface-variant);
+  font-size: 11px;
+}
+
+.slide-thumbnail__footer > span {
+  display: flex;
+  overflow: hidden;
+  align-items: center;
+  min-width: 0;
+  gap: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slide-thumbnail__footer .ui-icon-button {
+  width: 30px;
+  height: 30px;
+}
+
+.slide-thumbnail--add {
+  min-height: 160px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  border: 1px dashed #9aa0a6;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+/* Text and controls must always shrink inside Material cards. */
+:where(
+  .ui-card,
+  .stat-card,
+  .list-item,
+  .notice,
+  .review-target,
+  .project-card,
+  .session-card,
+  .admin-layout__content,
+  .timer-panel,
+  .form-grid,
+  .field,
+  .split
+) {
+  min-width: 0;
+}
+
+:where(.ui-card, .list-item, .notice, .review-target, .project-card, .session-card)
+:where(h1, h2, h3, h4, p, strong, span, blockquote) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.ui-button {
+  max-width: 100%;
+}
+
+.ui-button__label {
+  min-width: 0;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+@media (max-width: 980px) {
+  .session-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .slide-drag-hint {
+    display: none;
+  }
+
+  .slide-filmstrip-toolbar {
+    grid-template-columns: 1fr auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .session-directory__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .session-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .slide-thumbnail {
+    flex-basis: 178px;
+  }
+
+  .timer-settings__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .timer-settings__row .ui-button {
+    width: 100%;
+  }
+
+  .session-control-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

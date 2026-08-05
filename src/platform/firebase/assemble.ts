@@ -114,6 +114,12 @@ function parseRoom(event: FirebaseDocumentRecord | null, snapshot: PublishedSnap
     id: text(data.id, event.id),
     capacity: number(data.capacity, 100),
     participantCount: number(event.data.participantCount, number(data.participantCount)),
+    publicSlug: text(data.publicSlug ?? event.data.publicSlug),
+    lifecycle: data.lifecycle === 'ended' || event.data.lifecycle === 'ended'
+      ? 'ended'
+      : data.lifecycle === 'live' || event.data.lifecycle === 'live'
+        ? 'live'
+        : 'lobby',
     code: text(data.code),
     eventDate: text(data.eventDate),
     organizerName: text(data.organizerName),

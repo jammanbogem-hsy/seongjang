@@ -160,6 +160,29 @@ describe('live controls', () => {
     const running = executePlatformCommand(started.state, { type: 'DELETE_SLIDE', slideId: activeSlideId }, env)
     expect(running.result).toMatchObject({ ok: false, error: { code: 'NOT_ALLOWED' } })
   })
+
+  it('reorders the full deck while keeping the same live slide selected', () => {
+    const seed = createSeedState()
+    const activeSlideId = seed.slides[seed.live.activeSlideIndex].id
+    const orderedSlideIds = seed.slides.map((slide) => slide.id).reverse()
+    const reordered = executePlatformCommand(seed, { type: 'REORDER_SLIDES', orderedSlideIds }, env)
+
+    expect(reordered.result.ok).toBe(true)
+    expect(reordered.state.slides.map((slide) => slide.id)).toEqual(orderedSlideIds)
+    expect(reordered.state.slides.map((slide) => slide.order)).toEqual([1, 2, 3, 4])
+    expect(reordered.state.slides[reordered.state.live.activeSlideIndex].id).toBe(activeSlideId)
+  })
+
+  it('ends the session, stops the timer and marks every participant offline', () => {
+    const seed = createSeedState()
+    const running = executePlatformCommand(seed, { type: 'START_TIMER' }, env)
+    const ended = executePlatformCommand(running.state, { type: 'END_SESSION' }, env)
+
+    expect(ended.result.ok).toBe(true)
+    expect(ended.state.room.lifecycle).toBe('ended')
+    expect(ended.state.live.timer).toMatchObject({ status: 'complete', remainingSec: 0, endsAt: null })
+    expect(ended.state.participants.every((participant) => participant.status === 'offline')).toBe(true)
+  })
 })
 
 describe('autosave semantics', () => {

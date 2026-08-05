@@ -41,7 +41,6 @@ function platformValue(
     dispatch: <T,>() => ({ ok: true, value: undefined as T }),
     dispatchAsync,
     joinParticipant: async () => ({ ok: false, error: { code: 'NOT_ALLOWED', message: 'unused' } }),
-    manageJoinAccessCode: async () => ({ ok: false, error: { code: 'NOT_ALLOWED', message: 'unused' } }),
     revealParticipantPin: async () => ({ ok: false, error: { code: 'NOT_ALLOWED', message: 'unused' } }),
     savePrivateDraft: async () => true,
     selectedParticipantId: null,

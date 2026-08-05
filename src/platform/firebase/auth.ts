@@ -20,8 +20,8 @@ export const FIREBASE_CALLABLES = Object.freeze({
   applyEventCommand: 'applyEventCommand',
   applyReviewCommand: 'applyReviewCommand',
   bootstrapVibe26: 'bootstrapVibe26',
+  createHackathonSession: 'createHackathonSession',
   joinParticipantWithPin: 'joinOrReenterParticipant',
-  manageJoinAccessCode: 'manageJoinAccessCode',
   revealParticipantPin: 'revealParticipantPin',
 })
 
@@ -37,7 +37,6 @@ export interface FirebaseAuthSession {
 
 export interface ParticipantJoinRequest {
   deviceId?: string
-  entryCode?: string
   nickname: string
   pin: string
   roomCode: string
@@ -209,7 +208,6 @@ export async function joinParticipantWithPin(
   )
   const response = (await callable({
     deviceId: request.deviceId ?? participantDeviceId(),
-    entryCode: request.entryCode ?? '',
     nickname: request.nickname,
     pin: request.pin,
     roomCode: request.roomCode,

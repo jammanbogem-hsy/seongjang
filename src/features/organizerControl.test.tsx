@@ -72,4 +72,27 @@ describe('organizer live controls', () => {
     expect(screen.getByRole('heading', { name: liveTitle })).toBeInTheDocument()
     expect(window.localStorage.getItem(PLATFORM_STORAGE_KEY)).toContain('참여자 질문 추가 테스트')
   })
+
+  it('reorders slide thumbnails through drag and drop', async () => {
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <OrganizerControlPage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    const firstCanvas = screen.getByRole('button', { name: /1페이지 오늘 우리가 풀고 싶은 장면은/ })
+    const secondCanvas = screen.getByRole('button', { name: /2페이지 가장 먼저 도울 사용자는/ })
+    const firstCard = firstCanvas.closest('article')!
+    const secondCard = secondCanvas.closest('article')!
+    const dataTransfer = { effectAllowed: 'none' }
+    fireEvent.dragStart(firstCard, { dataTransfer })
+    fireEvent.dragOver(secondCard, { dataTransfer })
+    fireEvent.drop(secondCard, { dataTransfer })
+
+    await act(async () => { await Promise.resolve() })
+    const stored = window.localStorage.getItem(PLATFORM_STORAGE_KEY) ?? ''
+    expect(stored.indexOf('stage-empathy')).toBeLessThan(stored.indexOf('stage-discover'))
+  })
 })

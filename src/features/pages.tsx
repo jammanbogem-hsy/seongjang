@@ -22,8 +22,14 @@ import type {
 import { downloadTextExport } from '../platform/download'
 import { useAutosave } from '../platform/useAutosave'
 import { usePersistentDraft } from '../platform/usePersistentDraft'
-import { acceptAdminInviteWithGoogle, isAdminInviteEmailLink } from '../platform/firebase'
-import { AdminLayout, ParticipantLayout } from '../layouts'
+import {
+  acceptAdminInviteWithGoogle,
+  createHackathonSession,
+  isAdminInviteEmailLink,
+  observeOrganizerSessions,
+  type OrganizerSessionSummary,
+} from '../platform/firebase'
+import { AdminLayout, AppShell, ParticipantLayout } from '../layouts'
 import {
   AutosaveStatus,
   Button,
@@ -156,12 +162,12 @@ function ParticipantIdentityGate({
 
 export function LandingPage() {
   const navigate = useNavigate()
-  const { state } = usePlatform()
-  const [roomCode, setRoomCode] = useState(state.room.code)
+  const [roomCode, setRoomCode] = useState('')
 
   function join(event: FormEvent) {
     event.preventDefault()
-    navigate(`/join/${roomCode.trim().toUpperCase() || state.room.code}`)
+    const normalized = roomCode.trim().toUpperCase()
+    if (normalized) navigate(`/join/${normalized}`)
   }
 
   return (
@@ -180,6 +186,8 @@ export function LandingPage() {
                   id="gateway-room-code"
                   maxLength={8}
                   onChange={(event) => setRoomCode(event.target.value.toUpperCase())}
+                  placeholder="방 코드 입력"
+                  required
                   value={roomCode}
                 />
                 <Button trailingIcon="arrow_forward" type="submit">입장</Button>
@@ -188,8 +196,8 @@ export function LandingPage() {
           </div>
 
           <nav aria-label="플랫폼 바로가기" className="gateway-actions">
-            <Button className="gateway-action" leadingIcon="admin_panel_settings" onClick={() => navigate(`/admin/events/${EVENT_ID}/control`)} trailingIcon="arrow_forward" variant="text">
-              주최자 로그인
+            <Button className="gateway-action" leadingIcon="view_carousel" onClick={() => navigate('/admin/sessions')} trailingIcon="arrow_forward" variant="text">
+              주최자 세션
             </Button>
             <Button className="gateway-action" leadingIcon="dashboard" onClick={() => navigate(`/dashboards/${PUBLIC_SLUG}`)} trailingIcon="arrow_forward" variant="text">
               수합 대시보드
@@ -204,6 +212,139 @@ export function LandingPage() {
   )
 }
 
+export function OrganizerSessionsPage() {
+  const navigate = useNavigate()
+  const { authEmail, authRole, signInOrganizer, signOut } = usePlatform()
+  const { notify, renderToasts } = useNotices()
+  const [sessions, setSessions] = useState<OrganizerSessionSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [signingIn, setSigningIn] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [title, setTitle] = useState('')
+  const [tagline, setTagline] = useState('')
+  const [eventDate, setEventDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const canCreateSession = authEmail?.trim().toLowerCase() === 'jammanbogem@gmail.com'
+
+  useEffect(() => {
+    if (!authEmail) {
+      setLoading(false)
+      setSessions([])
+      return
+    }
+    setLoading(true)
+    return observeOrganizerSessions(
+      (nextSessions) => { setSessions(nextSessions); setLoading(false) },
+      (cause) => { notify(cause.message, 'danger'); setLoading(false) },
+    )
+  }, [authEmail, notify])
+
+  async function connect() {
+    setSigningIn(true)
+    const result = await signInOrganizer()
+    announceResult(result, notify)
+    setSigningIn(false)
+  }
+
+  async function createSession(event: FormEvent) {
+    event.preventDefault()
+    if (!title.trim() || !eventDate) return
+    setCreating(true)
+    try {
+      const created = await createHackathonSession({ title: title.trim(), tagline: tagline.trim(), eventDate })
+      notify(`방 코드 ${created.roomCode} 세션을 만들었어요.`)
+      setCreateOpen(false)
+      navigate(`/admin/events/${created.eventId}/control`)
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : '세션을 만들지 못했습니다.', 'danger')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  if (authRole !== 'owner' && authRole !== 'admin') {
+    return (
+      <AppShell brandTo="/" mode="organizer">
+        <main className="page narrow" id="main-content">
+          <Card className="empty-state identity-gate" padding="lg">
+            <span className="gateway-icon"><Icon filled name="view_carousel" size="lg" /></span>
+            <h1>주최자 세션</h1>
+            <Button disabled={signingIn} leadingIcon="login" onClick={() => { void connect() }} size="lg">
+              {signingIn ? '로그인 중…' : 'Google로 로그인'}
+            </Button>
+          </Card>
+        </main>
+        {renderToasts()}
+      </AppShell>
+    )
+  }
+
+  return (
+    <AppShell
+      actions={<Button leadingIcon="logout" onClick={() => { void signOut() }} size="sm" variant="text">로그아웃</Button>}
+      brandTo="/admin/sessions"
+      mode="organizer"
+    >
+      <main className="session-directory page" id="main-content">
+        <header className="session-directory__header">
+          <div><span className="eyebrow">MY SESSIONS</span><h1>세션</h1></div>
+          {canCreateSession ? <Button leadingIcon="add" onClick={() => setCreateOpen(true)} size="lg">새 세션</Button> : null}
+        </header>
+        {loading ? <div className="session-directory__loading" role="status">세션을 불러오는 중…</div> : null}
+        {!loading && !sessions.length && canCreateSession ? (
+          <button className="session-card session-card--new" onClick={() => setCreateOpen(true)} type="button">
+            <Icon name="add_circle" size="lg" />
+            <strong>첫 세션 만들기</strong>
+          </button>
+        ) : null}
+        {!loading && !sessions.length && !canCreateSession ? (
+          <MascotCue description="초대받은 세션이 생기면 이곳에 표시됩니다." title="연결된 세션이 없습니다." variant="empty" />
+        ) : null}
+        <div className="session-card-grid">
+          {sessions.map((session) => {
+            const ended = session.lifecycle === 'ended'
+            return (
+              <article className="session-card" key={session.eventId}>
+                <div className="session-card__top">
+                  <Chip icon={ended ? 'archive' : session.lifecycle === 'live' ? 'sensors' : 'schedule'} tone={ended ? 'neutral' : session.lifecycle === 'live' ? 'success' : 'primary'}>
+                    {ended ? '종료됨' : session.lifecycle === 'live' ? '진행 중' : '준비 중'}
+                  </Chip>
+                  <span>{session.eventDate}</span>
+                </div>
+                <div className="session-card__body">
+                  <h2>{session.title}</h2>
+                  <div className="session-room-code"><span>방 코드</span><strong>{session.roomCode}</strong></div>
+                </div>
+                <div className="session-card__meta"><span><Icon name="group" size="sm" /> {session.participantCount}명</span><span>{session.role === 'owner' ? 'Owner' : '관리자'}</span></div>
+                <Button
+                  fullWidth
+                  leadingIcon={ended ? 'history' : 'arrow_forward'}
+                  onClick={() => navigate(ended ? `/admin/events/${session.eventId}/synthesis` : `/admin/events/${session.eventId}/control`)}
+                  variant={ended ? 'outlined' : 'tonal'}
+                >{ended ? '기록 보기' : '세션 열기'}</Button>
+              </article>
+            )
+          })}
+        </div>
+      </main>
+      <Dialog
+        actions={<><Button disabled={creating} onClick={() => setCreateOpen(false)} variant="text">취소</Button><Button disabled={!title.trim() || !eventDate} loading={creating} onClick={() => { document.getElementById('create-session-submit')?.click() }}>만들기</Button></>}
+        onClose={() => setCreateOpen(false)}
+        open={createOpen}
+        title="새 세션"
+      >
+        <form className="form-grid" onSubmit={createSession}>
+          <Field autoFocus label="세션 이름" maxLength={80} onChange={(event) => setTitle(event.target.value)} required value={title} />
+          <Field label="날짜" onChange={(event) => setEventDate(event.target.value)} required type="date" value={eventDate} />
+          <Field label="한 줄 메모" maxLength={160} onChange={(event) => setTagline(event.target.value)} value={tagline} />
+          <button hidden id="create-session-submit" type="submit" />
+        </form>
+      </Dialog>
+      {renderToasts()}
+    </AppShell>
+  )
+}
+
 export function JoinPage() {
   const navigate = useNavigate()
   const { roomCode = 'VIBE26' } = useParams()
@@ -211,7 +352,6 @@ export function JoinPage() {
   const { notify, renderToasts } = useNotices()
   const [nickname, setNickname] = useState('')
   const [pin, setPin] = useState('')
-  const [entryCode, setEntryCode] = useState('')
   const [error, setError] = useState('')
   const participantCount = state.participants.length ||
     state.room.participantCount ||
@@ -220,10 +360,10 @@ export function JoinPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    const result = await joinParticipant({ roomCode, nickname, pin, entryCode })
+    const result = await joinParticipant({ roomCode, nickname, pin })
     if (result.ok) {
       notify(result.notice ?? '입장했어요.')
-      navigate(`/events/${EVENT_ID}/live`)
+      navigate(`/events/${result.value.eventId ?? EVENT_ID}/live`)
       return
     }
     setError(result.error.message)
@@ -261,18 +401,6 @@ export function JoinPage() {
                 required
                 type="password"
                 value={pin}
-              />
-              <Field
-                autoComplete="one-time-code"
-                helpText="처음 만드는 닉네임에만 필요합니다. 재입장이라면 비워두세요."
-                inputMode="numeric"
-                label="신규 입장 키 6자리"
-                maxLength={6}
-                onChange={(event) => { setEntryCode(event.target.value.replace(/\D/g, '').slice(0, 6)); setError('') }}
-                pattern="[0-9]{6}"
-                placeholder="주최자에게 확인"
-                type="password"
-                value={entryCode}
               />
               <Button fullWidth size="lg" trailingIcon="arrow_forward" type="submit">입장하고 시작하기</Button>
             </form>
@@ -482,6 +610,20 @@ export function ParticipantLivePage() {
   ])
 
   if (!currentParticipant) {
+    if (state.room.lifecycle === 'ended') {
+      return (
+        <ParticipantShell>
+          <main className="page narrow" id="main-content">
+            <Card className="empty-state identity-gate" padding="lg">
+              <span className="gateway-icon"><Icon filled name="task_alt" size="lg" /></span>
+              <h1>세션이 종료되었습니다.</h1>
+              <p>작성 기록은 주최자의 세션 카드에 안전하게 보관됩니다.</p>
+              <Button leadingIcon="home" onClick={() => navigate('/')} variant="tonal">처음 화면</Button>
+            </Card>
+          </main>
+        </ParticipantShell>
+      )
+    }
     return (
       <ParticipantShell>
         <main className="page narrow" id="main-content">
@@ -1008,6 +1150,7 @@ export function SubmissionPage() {
 
 export function OrganizerControlPage() {
   const { currentSlide, dispatchAsync, state, timerView } = usePlatform()
+  const navigate = useNavigate()
   const currentSlideRef = useRef(currentSlide)
   currentSlideRef.current = currentSlide
   const { notify, renderToasts } = useNotices()
@@ -1016,6 +1159,11 @@ export function OrganizerControlPage() {
   const [creatingSlide, setCreatingSlide] = useState(false)
   const [deleteSlideTarget, setDeleteSlideTarget] = useState<Slide | null>(null)
   const [deletingSlide, setDeletingSlide] = useState(false)
+  const [draggedSlideId, setDraggedSlideId] = useState<string | null>(null)
+  const [dragOverSlideId, setDragOverSlideId] = useState<string | null>(null)
+  const [reorderingSlides, setReorderingSlides] = useState(false)
+  const [endSessionOpen, setEndSessionOpen] = useState(false)
+  const [endingSession, setEndingSession] = useState(false)
   const [createSlideDraft, setCreateSlideDraft] = useState<CreateSlideInput>({
     eyebrow: 'NEW STEP · 10분',
     title: '',
@@ -1192,6 +1340,31 @@ export function OrganizerControlPage() {
     if (ok) setDeleteSlideTarget(null)
   }
 
+  async function reorderSlides(targetSlideId: string) {
+    if (!draggedSlideId || draggedSlideId === targetSlideId || reorderingSlides) return
+    const sourceIndex = state.slides.findIndex((slide) => slide.id === draggedSlideId)
+    const targetIndex = state.slides.findIndex((slide) => slide.id === targetSlideId)
+    if (sourceIndex < 0 || targetIndex < 0) return
+    const orderedSlideIds = state.slides.map((slide) => slide.id)
+    const [movedSlideId] = orderedSlideIds.splice(sourceIndex, 1)
+    orderedSlideIds.splice(targetIndex, 0, movedSlideId)
+    setReorderingSlides(true)
+    announceResult(await dispatchAsync({ type: 'REORDER_SLIDES', orderedSlideIds }), notify)
+    setReorderingSlides(false)
+    setDraggedSlideId(null)
+    setDragOverSlideId(null)
+  }
+
+  async function endSession() {
+    setEndingSession(true)
+    const ok = announceResult(await dispatchAsync({ type: 'END_SESSION' }), notify)
+    setEndingSession(false)
+    if (ok) {
+      setEndSessionOpen(false)
+      navigate('/admin/sessions')
+    }
+  }
+
   async function applyTimerDuration(minutes = Number(durationMinutes)) {
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
       notify('타이머는 1분에서 180분 사이의 정수로 입력해주세요.', 'danger')
@@ -1207,7 +1380,14 @@ export function OrganizerControlPage() {
   return (
     <OrganizerShell>
       <AdminLayout
-        actions={<StatusChip label="실시간 진행 동기화" status="live" />}
+        actions={(
+          <div className="button-row session-control-actions">
+            <StatusChip label={state.room.lifecycle === 'ended' ? '세션 종료됨' : '실시간 동기화'} status={state.room.lifecycle === 'ended' ? 'complete' : 'live'} />
+            {state.room.lifecycle !== 'ended' ? (
+              <Button leadingIcon="stop_circle" onClick={() => setEndSessionOpen(true)} size="sm" variant="outlined">세션 종료</Button>
+            ) : null}
+          </div>
+        )}
         description="페이지, 타이머, 답변 공개 상태를 한곳에서 제어하고 모든 참여자의 화면에 반영합니다."
         eyebrow={`LIVE CONTROL · REVISION ${state.revision}`}
         title="지금 모두가 보고 있는 장면"
@@ -1310,34 +1490,55 @@ export function OrganizerControlPage() {
           </aside>
         </div>
 
-        <Card padding="lg">
-          <SectionHeader
-            actions={<Button disabled={state.slides.length >= 12} leadingIcon="add" onClick={openCreateSlide} variant="tonal">새 슬라이드</Button>}
-            description="질문 페이지를 만들고 순서를 정리한 뒤, 페이지를 선택하면 모든 참여자 화면이 함께 이동합니다."
-            eyebrow={`DECK · ${state.slides.length} PAGES`}
-            title="진행 슬라이드"
-          />
-          <div className="slide-list">
+        <Card className="slide-filmstrip-shell" padding="md">
+          <div className="slide-filmstrip-toolbar">
+            <div>
+              <strong>페이지</strong>
+              <span>{state.live.activeSlideIndex + 1} / {state.slides.length}</span>
+            </div>
+            <span className="slide-drag-hint"><Icon name="drag_indicator" size="sm" /> 끌어서 순서 변경</span>
+            <Button disabled={state.slides.length >= 12} leadingIcon="add" onClick={openCreateSlide} size="sm" variant="tonal">새 슬라이드</Button>
+          </div>
+          <div aria-label="슬라이드 페이지뷰" className="slide-filmstrip">
             {state.slides.map((slide, index) => {
               const count = state.answers.filter((answer) => answer.slideId === slide.id && answer.status === 'submitted').length
               const active = index === state.live.activeSlideIndex
               return (
-                <div className={`slide-item${active ? ' active' : ''}`} key={slide.id}>
-                  <button className="slide-item__main" onClick={() => run({ type: 'SET_ACTIVE_SLIDE', slideIndex: index })} type="button">
-                    <span className="slide-index">{String(slide.order).padStart(2, '0')}</span>
-                    <span className="list-main"><span className="list-title">{slide.title}</span><span className="list-subtitle">{Math.round(slide.durationSec / 60)}분 · 답변 {count}개</span></span>
-                    <Chip tone={state.live.answersRevealedBySlide[slide.id] ? 'success' : 'neutral'}>{state.live.answersRevealedBySlide[slide.id] ? '공개' : '비공개'}</Chip>
-                    <Icon name={active ? 'sensors' : 'chevron_right'} />
+                <article
+                  aria-grabbed={draggedSlideId === slide.id}
+                  className={`slide-thumbnail${active ? ' active' : ''}${dragOverSlideId === slide.id ? ' drag-over' : ''}`}
+                  draggable={!reorderingSlides}
+                  key={slide.id}
+                  onDragEnd={() => { setDraggedSlideId(null); setDragOverSlideId(null) }}
+                  onDragOver={(event) => { event.preventDefault(); setDragOverSlideId(slide.id) }}
+                  onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; setDraggedSlideId(slide.id) }}
+                  onDrop={(event) => { event.preventDefault(); void reorderSlides(slide.id) }}
+                >
+                  <button
+                    aria-label={`${slide.order}페이지 ${slide.title}`}
+                    className="slide-thumbnail__canvas"
+                    onClick={() => run({ type: 'SET_ACTIVE_SLIDE', slideIndex: index })}
+                    type="button"
+                  >
+                    <span className="slide-thumbnail__eyebrow">{slide.eyebrow}</span>
+                    <strong>{slide.title}</strong>
+                    <img alt="" src={slide.illustration} />
                   </button>
-                  <div aria-label={`${slide.order}단계 편집 메뉴`} className="slide-item__actions">
-                    <IconButton disabled={index === 0} icon="arrow_upward" label={`${slide.order}단계 앞으로 이동`} onClick={() => run({ type: 'MOVE_SLIDE', slideId: slide.id, direction: 'up' })} />
-                    <IconButton disabled={index === state.slides.length - 1} icon="arrow_downward" label={`${slide.order}단계 뒤로 이동`} onClick={() => run({ type: 'MOVE_SLIDE', slideId: slide.id, direction: 'down' })} />
+                  <div className="slide-thumbnail__footer">
+                    <span><Icon name="drag_indicator" size="sm" /> {slide.order}</span>
+                    <span>{Math.round(slide.durationSec / 60)}분 · 답변 {count}개</span>
                     <IconButton disabled={state.slides.length >= 12} icon="content_copy" label={`${slide.order}단계 복제`} onClick={() => { void duplicateSlide(slide) }} />
                     <IconButton icon="delete" label={`${slide.order}단계 삭제`} onClick={() => setDeleteSlideTarget(slide)} />
                   </div>
-                </div>
+                </article>
               )
             })}
+            {state.slides.length < 12 ? (
+              <button className="slide-thumbnail slide-thumbnail--add" onClick={openCreateSlide} type="button">
+                <Icon name="add" size="lg" />
+                <span>페이지 추가</span>
+              </button>
+            ) : null}
           </div>
         </Card>
 
@@ -1386,6 +1587,21 @@ export function OrganizerControlPage() {
           />
         ) : null}
       </AdminLayout>
+      <Dialog
+        actions={(
+          <>
+            <Button disabled={endingSession} onClick={() => setEndSessionOpen(false)} variant="text">취소</Button>
+            <Button leadingIcon="stop_circle" loading={endingSession} onClick={() => { void endSession() }} variant="danger">종료</Button>
+          </>
+        )}
+        description="참여자는 즉시 퇴장되고 새 입장이 닫힙니다. 주최자는 세션 카드에서 기록을 계속 확인할 수 있습니다."
+        onClose={() => setEndSessionOpen(false)}
+        open={endSessionOpen}
+        size="sm"
+        title="이 세션을 종료할까요?"
+      >
+        <OutcomeNote tone="warm"><strong>{state.room.title}</strong><br />방 코드 {state.room.code}의 라이브 연결을 종료합니다.</OutcomeNote>
+      </Dialog>
       <Dialog
         actions={(
           <Button leadingIcon="done" onClick={() => { void closeSlideEditor() }}>
@@ -1533,7 +1749,7 @@ export function OrganizerControlPage() {
 type OperationsSection = 'participants' | 'submissions' | 'admins' | 'portability'
 
 export function OrganizerOperationsPage({ section }: { section: OperationsSection }) {
-  const { authRole, dispatchAsync, manageJoinAccessCode, revealParticipantPin, state } = usePlatform()
+  const { authRole, dispatchAsync, revealParticipantPin, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
   const [query, setQuery] = useState('')
   const [pinParticipant, setPinParticipant] = useState<Participant | null>(null)
@@ -1541,8 +1757,6 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
   const [pinVisible, setPinVisible] = useState(false)
   const [revealedPin, setRevealedPin] = useState('')
   const [pinLoading, setPinLoading] = useState(false)
-  const [joinAccessCode, setJoinAccessCode] = useState('')
-  const [joinCodeLoading, setJoinCodeLoading] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [reviewSubmissionId, setReviewSubmissionId] = useState<string | null>(null)
   const [exhibitionUpdating, setExhibitionUpdating] = useState(false)
@@ -1575,19 +1789,6 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
     }
   }, [pinParticipant?.id, pinVisible])
 
-  useEffect(() => {
-    if (!joinAccessCode) return
-    const clearCode = () => setJoinAccessCode('')
-    const timeout = window.setTimeout(clearCode, 30_000)
-    document.addEventListener('visibilitychange', clearCode)
-    window.addEventListener('pagehide', clearCode)
-    return () => {
-      window.clearTimeout(timeout)
-      document.removeEventListener('visibilitychange', clearCode)
-      window.removeEventListener('pagehide', clearCode)
-    }
-  }, [joinAccessCode])
-
   function closePinDialog() {
     setPinVisible(false)
     setRevealedPin('')
@@ -1607,16 +1808,6 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
     event.preventDefault()
     const ok = announceResult(await dispatchAsync({ type: 'INVITE_ADMIN', email: inviteEmail }), notify)
     if (ok) setInviteEmail('')
-  }
-
-  async function manageEntryCode(action: 'reveal' | 'rotate') {
-    setJoinCodeLoading(true)
-    try {
-      const result = await manageJoinAccessCode(action)
-      if (announceResult(result, notify)) setJoinAccessCode(result.ok ? result.value : '')
-    } finally {
-      setJoinCodeLoading(false)
-    }
   }
 
   async function revokeAdmin(inviteId: string) {
@@ -1669,21 +1860,6 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
               <StatCard icon="history" label="최근 활동" trend="마지막 저장 기준" value={`${state.participants.filter((participant) => Date.now() - Date.parse(participant.lastSeenAt) < 15 * 60_000).length}명`} />
               <StatCard icon="assignment_turned_in" label="개인 제출" value={`${state.submissions.filter((submission) => submission.status === 'submitted').length}명`} />
             </div>
-            <Card padding="lg" tone="subtle">
-              <SectionHeader
-                actions={(
-                  <div className="button-row">
-                    <Button disabled={joinCodeLoading} leadingIcon="visibility" onClick={() => { void manageEntryCode('reveal') }} variant="outlined">입장 키 확인</Button>
-                    <Button disabled={joinCodeLoading} leadingIcon="autorenew" onClick={() => { void manageEntryCode('rotate') }}>새 키 발급</Button>
-                  </div>
-                )}
-                description="신규 닉네임 등록에만 필요한 6자리 키입니다. 현장 참여자에게만 공유하고 노출되었다면 즉시 교체하세요."
-                eyebrow="SECURE ADMISSION"
-                title="신규 참여자 입장 키"
-                titleAs="h2"
-              />
-              {joinAccessCode ? <div className="pin-reveal"><span>{joinAccessCode}</span><p>30초 뒤 이 기기에서 자동으로 지워집니다.</p></div> : null}
-            </Card>
             <OutcomeNote tone="warm"><strong>PIN 조회 정책</strong><br />재입장 지원이 필요한 경우에만 조회 사유를 입력하세요. 한 번에 한 명의 PIN을 30초 동안 확인할 수 있습니다.</OutcomeNote>
             <Card padding="lg">
               <div className="split mobile-stack operations-filter">
@@ -1858,6 +2034,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
 export function SynthesisPage() {
   const navigate = useNavigate()
   const { dispatchAsync, state } = usePlatform()
+  const publicSlug = state.room.publicSlug || (state.room.id.startsWith('session-') ? state.room.id.slice(8) : PUBLIC_SLUG)
   const { notify, renderToasts } = useNotices()
   const synthesisDraftKey = `vibecoding.synthesis-draft.v2.${state.room.id}`
   const [summaryDraft, setSummaryDraft] = usePersistentDraft(
@@ -2032,7 +2209,7 @@ export function SynthesisPage() {
         return
       }
       const result = await dispatchAsync({ type: 'PUBLISH_SYNTHESIS' })
-      if (announceResult(result, notify)) window.setTimeout(() => navigate(`/dashboards/${PUBLIC_SLUG}`), 450)
+      if (announceResult(result, notify)) window.setTimeout(() => navigate(`/dashboards/${publicSlug}`), 450)
     } finally {
       setPublishing(false)
     }
@@ -2172,6 +2349,7 @@ function PublicMetrics({ metrics }: { metrics: NonNullable<ReturnType<typeof use
 }
 
 export function DashboardPage() {
+  const { slug = PUBLIC_SLUG } = useParams()
   const { state } = usePlatform()
   const snapshot = state.publishedSnapshot
 
@@ -2234,7 +2412,7 @@ export function DashboardPage() {
         <section className="public-cta">
           <div><span className="eyebrow">INDIVIDUAL EXHIBITION</span><h2>{data.metrics.projectCount}개의 아이디어가 작품이 되었습니다.</h2><p>모든 결과물은 한 사람의 이름으로 제출되고, 다음 행사에서도 읽을 수 있는 README로 이어집니다.</p></div>
           <MascotAction label="전시 고양이가 기다려요" variant="exhibition">
-            <Button leadingIcon="museum" onClick={() => window.location.assign(`/exhibitions/${PUBLIC_SLUG}`)} size="lg">작품 전시 보기</Button>
+            <Button leadingIcon="museum" onClick={() => window.location.assign(`/exhibitions/${slug}`)} size="lg">작품 전시 보기</Button>
           </MascotAction>
         </section>
       </main>
@@ -2308,7 +2486,7 @@ function ProjectCard({
 
 export function ExhibitionPage() {
   const navigate = useNavigate()
-  const { submissionSlug } = useParams()
+  const { slug = PUBLIC_SLUG, submissionSlug } = useParams()
   const { state } = usePlatform()
   const snapshot = state.publishedSnapshot
   const projects = snapshot?.data.projects ?? []
@@ -2319,12 +2497,12 @@ export function ExhibitionPage() {
 
   function openProject(project: PublicProject) {
     setSelectedKey(project.key)
-    navigate(`/exhibitions/${PUBLIC_SLUG}/${project.key}`, { replace: true })
+    navigate(`/exhibitions/${slug}/${project.key}`, { replace: true })
   }
 
   function closeProject() {
     setSelectedKey(null)
-    navigate(`/exhibitions/${PUBLIC_SLUG}`, { replace: true })
+    navigate(`/exhibitions/${slug}`, { replace: true })
   }
 
   return (
@@ -2345,7 +2523,7 @@ export function ExhibitionPage() {
         </section>
         <section className="public-cta compact-cta">
           <div><span className="eyebrow">PORTABLE BY DESIGN</span><h2>전시의 끝은 다음 행사의 시작</h2><p>README, JSON, CSV와 Markdown으로 데이터를 이어받을 수 있습니다.</p></div>
-          <Button leadingIcon="dashboard" onClick={() => navigate(`/dashboards/${PUBLIC_SLUG}`)} size="lg" variant="tonal">수합 대시보드</Button>
+          <Button leadingIcon="dashboard" onClick={() => navigate(`/dashboards/${slug}`)} size="lg" variant="tonal">수합 대시보드</Button>
         </section>
       </main>
 

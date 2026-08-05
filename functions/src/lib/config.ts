@@ -10,7 +10,6 @@ export const EVENT_ID = 'room-vibe26'
 export const PUBLIC_SLUG = 'vibecoding-2026'
 export const REGION = 'asia-northeast3'
 export const MAX_PARTICIPANTS = 100
-export const JOIN_ACCESS_SUBJECT = '__join_access__'
 export const CORE_RUNTIME_SERVICE_ACCOUNT = 'vibecoding-core-runtime@vibecoding-a3ada.iam.gserviceaccount.com'
 export const PIN_RUNTIME_SERVICE_ACCOUNT = 'vibecoding-pin-runtime@vibecoding-a3ada.iam.gserviceaccount.com'
 

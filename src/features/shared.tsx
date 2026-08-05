@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useNavigate } from '../app/router'
+import { useLocation, useNavigate } from '../app/router'
 import type { CommandResult } from '../domain/models'
 import { AppShell, type AppNavItem } from '../layouts'
 import { Button, Card, CatIllustration, Chip, Icon, ToastRegion, type ToastMessage } from '../ui'
@@ -8,25 +8,32 @@ import { usePlatform } from '../app/PlatformProvider'
 export const EVENT_ID = 'room-vibe26'
 export const PUBLIC_SLUG = 'vibecoding-2026'
 
-export const organizerNav: AppNavItem[] = [
-  { label: '라이브', to: `/admin/events/${EVENT_ID}/control`, icon: 'present_to_all' },
-  { label: '참여자', to: `/admin/events/${EVENT_ID}/participants`, icon: 'group' },
-  { label: '정리', to: `/admin/events/${EVENT_ID}/synthesis`, icon: 'dashboard' },
-  { label: '작품', to: `/admin/events/${EVENT_ID}/submissions`, icon: 'gallery_thumbnail' },
-  { label: '관리자', to: `/admin/events/${EVENT_ID}/admins`, icon: 'manage_accounts' },
-  { label: '연결', to: `/admin/events/${EVENT_ID}/portability`, icon: 'hub' },
-]
+function organizerNav(eventId: string): AppNavItem[] {
+  return [
+    { label: '세션', to: '/admin/sessions', icon: 'view_carousel' },
+    { label: '라이브', to: `/admin/events/${eventId}/control`, icon: 'present_to_all' },
+    { label: '참여자', to: `/admin/events/${eventId}/participants`, icon: 'group' },
+    { label: '정리', to: `/admin/events/${eventId}/synthesis`, icon: 'dashboard' },
+    { label: '작품', to: `/admin/events/${eventId}/submissions`, icon: 'gallery_thumbnail' },
+    { label: '관리자', to: `/admin/events/${eventId}/admins`, icon: 'manage_accounts' },
+    { label: '연결', to: `/admin/events/${eventId}/portability`, icon: 'hub' },
+  ]
+}
 
-export const participantNav: AppNavItem[] = [
-  { label: '라이브', to: `/events/${EVENT_ID}/live`, icon: 'live_tv' },
-  { label: '내 작품', to: `/events/${EVENT_ID}/submission`, icon: 'rocket_launch' },
-  { label: '전시', to: `/exhibitions/${PUBLIC_SLUG}`, icon: 'museum' },
-]
+function participantNav(eventId: string, publicSlug: string): AppNavItem[] {
+  return [
+    { label: '라이브', to: `/events/${eventId}/live`, icon: 'live_tv' },
+    { label: '내 작품', to: `/events/${eventId}/submission`, icon: 'rocket_launch' },
+    { label: '전시', to: `/exhibitions/${publicSlug}`, icon: 'museum' },
+  ]
+}
 
-export const publicNav: AppNavItem[] = [
-  { label: '수합 대시보드', to: `/dashboards/${PUBLIC_SLUG}`, icon: 'dashboard' },
-  { label: '작품 전시', to: `/exhibitions/${PUBLIC_SLUG}`, icon: 'museum' },
-]
+function publicNav(publicSlug: string): AppNavItem[] {
+  return [
+    { label: '수합 대시보드', to: `/dashboards/${publicSlug}`, icon: 'dashboard' },
+    { label: '작품 전시', to: `/exhibitions/${publicSlug}`, icon: 'museum' },
+  ]
+}
 
 export function formatTimer(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60)
@@ -77,6 +84,7 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
     signOut,
     state,
   } = usePlatform()
+  const eventId = state.room.id || EVENT_ID
   const [signingIn, setSigningIn] = useState(false)
   const [authError, setAuthError] = useState('')
 
@@ -141,9 +149,9 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
           </Button>
         </div>
       }
-      brandTo={`/admin/events/${EVENT_ID}/control`}
+      brandTo="/admin/sessions"
       mode="organizer"
-      navItems={organizerNav}
+      navItems={organizerNav(eventId)}
       roomCode={state.room.code}
     >
       {children}
@@ -154,6 +162,8 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
 export function ParticipantShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const { currentParticipant, signOut, state } = usePlatform()
+  const eventId = state.room.id || EVENT_ID
+  const publicSlug = state.room.publicSlug || (eventId.startsWith('session-') ? eventId.slice(8) : PUBLIC_SLUG)
   return (
     <AppShell
       actions={currentParticipant ? (
@@ -168,9 +178,9 @@ export function ParticipantShell({ children }: { children: ReactNode }) {
           다른 닉네임
         </Button>
       ) : undefined}
-      brandTo={`/events/${EVENT_ID}/live`}
+      brandTo={`/events/${eventId}/live`}
       mode="participant"
-      navItems={participantNav}
+      navItems={participantNav(eventId, publicSlug)}
       roomCode={state.room.code}
     >
       <div className="session-strip" role="status">
@@ -186,18 +196,21 @@ export function ParticipantShell({ children }: { children: ReactNode }) {
 
 export function PublicShell({ children, minimal = false }: { children: ReactNode; minimal?: boolean }) {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const { state } = usePlatform()
+  const pathSlug = pathname.match(/^\/(?:dashboards|exhibitions)\/([^/]+)/)?.[1]
+  const publicSlug = pathSlug || state.room.publicSlug || PUBLIC_SLUG
   return (
     <AppShell
-      actions={
+      actions={!minimal ? (
         <Button className="keep-mobile" leadingIcon="login" onClick={() => navigate(`/join/${state.room.code}`)} variant="outlined">
           방 입장
         </Button>
-      }
+      ) : undefined}
       className={minimal ? 'app-shell--gateway' : undefined}
       mode="public"
-      navItems={publicNav}
-      roomCode={state.room.code}
+      navItems={minimal ? [] : publicNav(publicSlug)}
+      roomCode={minimal ? undefined : state.room.code}
     >
       {children}
       {!minimal ? <footer className="site-footer">

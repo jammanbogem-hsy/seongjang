@@ -21,10 +21,13 @@ export interface Room {
   eventDate: string
   capacity: number
   participantCount?: number
+  publicSlug?: string
+  lifecycle?: 'lobby' | 'live' | 'ended'
 }
 
 export interface Participant {
   id: Identifier
+  eventId?: Identifier
   nickname: string
   normalizedNickname: string
   pin: string
@@ -273,7 +276,6 @@ export type CommandResult<T = undefined> =
   | { ok: false; error: CommandError }
 
 export interface JoinParticipantInput {
-  entryCode?: string
   roomCode: string
   nickname: string
   pin: string
@@ -372,6 +374,8 @@ export type PlatformCommand =
   | { type: 'CREATE_SLIDE'; input: CreateSlideInput }
   | { type: 'DELETE_SLIDE'; slideId: Identifier }
   | { type: 'MOVE_SLIDE'; slideId: Identifier; direction: 'up' | 'down' }
+  | { type: 'REORDER_SLIDES'; orderedSlideIds: Identifier[] }
+  | { type: 'END_SESSION' }
   | { type: 'SET_TIMER_DURATION'; durationSec: number }
   | { type: 'START_TIMER' }
   | { type: 'PAUSE_TIMER' }

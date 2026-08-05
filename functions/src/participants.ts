@@ -1,10 +1,9 @@
-import { createHmac, randomInt, randomUUID } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 import { Timestamp } from 'firebase-admin/firestore'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import { appendAuditLog, requireOrganizer } from './lib/authz.js'
 import {
   FUNCTION_COST_GUARDRAILS,
-  JOIN_ACCESS_SUBJECT,
   MAX_PARTICIPANTS,
   PIN_RUNTIME_SERVICE_ACCOUNT,
   participantSecretKey,
@@ -32,7 +31,6 @@ import {
 const MAX_FAILED_ATTEMPTS = 5
 const MAX_FAILED_ATTEMPTS_PER_IP = 20
 const MAX_FAILED_ATTEMPTS_PER_TARGET = 40
-const MAX_JOIN_ACCESS_FAILURES_PER_IP = 20
 const LOCKOUT_MS = 15 * 60 * 1_000
 const JOIN_WINDOW_MS = 60 * 60 * 1_000
 const MAX_JOIN_REQUESTS_PER_IP_WINDOW = 600
@@ -45,7 +43,7 @@ const MAX_PIN_REVEALS_PER_WINDOW = 5
 interface JoinTransactionResult {
   created: boolean
   eventId: string
-  failure?: 'join-access' | 'pin'
+  failure?: 'pin'
   locked: boolean
   nickname: string
   participantUid: string
@@ -72,12 +70,6 @@ async function consumeJoinRateLimit(ip: string, secret: string, now: Timestamp):
 
 function privateLimitId(secret: string, ...parts: string[]): string {
   return createHmac('sha256', secret).update(parts.join('\u0000')).digest('hex')
-}
-
-function joinAccessCode(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  const normalized = value.trim()
-  return /^\d{6}$/.test(normalized) ? normalized : ''
 }
 
 function requireRecentOrganizerAuth(request: Parameters<typeof requireOrganizer>[1]): void {
@@ -133,7 +125,6 @@ export const joinOrReenterParticipant = onCall(
     const roomCode = normalizeRoomCode(requiredString(input, 'roomCode', { max: 12 }))
     const deviceId = requiredString(input, 'deviceId', { min: 12, max: 180, label: '기기 식별자' })
     const pin = normalizePin(input.pin)
-    const entryCode = joinAccessCode(input.entryCode)
     const { nickname, normalizedNickname } = normalizeNickname(
       requiredString(input, 'nickname', { max: 64 }),
     )
@@ -173,7 +164,6 @@ export const joinOrReenterParticipant = onCall(
     const registrationRef = db.doc(`joinRegistrationLimits/${registrationWindow}__${trustedCallerKey}`)
     const deviceRegistrationRef = db.doc(`joinDeviceRegistrationLimits/${registrationWindow}__${deviceKey}`)
     const ipRegistrationRef = db.doc(`joinIpRegistrationLimits/${registrationWindow}__${ipKey}`)
-    const joinAccessAttemptRef = db.doc(`joinAccessAttemptLimits/${privateLimitId(secret, eventId, callerIp)}`)
     const indexRef = db.doc(
       `events/${eventId}/nicknameIndex/${nicknameIndexId(eventId, normalizedNickname)}`,
     )
@@ -309,68 +299,15 @@ export const joinOrReenterParticipant = onCall(
       if (participantCount >= capacity) {
         throw new HttpsError('resource-exhausted', `이 방은 최대 ${capacity}명까지 참여할 수 있습니다.`)
       }
-      const expectedJoinAccessVerifier = String(eventSnapshot.get('joinAccessCodeVerifier') ?? '')
-      if (!expectedJoinAccessVerifier) {
-        throw new HttpsError('failed-precondition', '주최자가 신규 참여자 입장 키를 먼저 발급해야 합니다.')
-      }
       const [
         registrationSnapshot,
         deviceRegistrationSnapshot,
         ipRegistrationSnapshot,
-        joinAccessAttemptSnapshot,
       ] = await Promise.all([
         transaction.get(registrationRef),
         transaction.get(deviceRegistrationRef),
         transaction.get(ipRegistrationRef),
-        transaction.get(joinAccessAttemptRef),
       ])
-      const accessLockedUntil = joinAccessAttemptSnapshot.get('lockedUntil')
-      const validEntryCode = Boolean(entryCode) && verifyPin(
-        secret,
-        eventId,
-        JOIN_ACCESS_SUBJECT,
-        entryCode,
-        expectedJoinAccessVerifier,
-      )
-      if (invalidCredentialHitsActiveLock(
-        validEntryCode,
-        now.toMillis(),
-        accessLockedUntil instanceof Timestamp ? accessLockedUntil.toMillis() : null,
-      )) {
-        return {
-          created: false,
-          eventId,
-          failure: 'join-access',
-          locked: true,
-          nickname,
-          participantUid: '',
-          verified: false,
-        }
-      }
-      if (!validEntryCode) {
-        const windowExpired = joinAccessAttemptSnapshot.get('expiresAt') instanceof Timestamp
-          && (joinAccessAttemptSnapshot.get('expiresAt') as Timestamp).toMillis() <= now.toMillis()
-        const failedAttempts = (windowExpired ? 0 : Number(joinAccessAttemptSnapshot.get('failedAttempts') ?? 0)) + 1
-        transaction.set(joinAccessAttemptRef, {
-          eventId,
-          failedAttempts,
-          lastFailedAt: now,
-          lockedUntil: failedAttempts >= MAX_JOIN_ACCESS_FAILURES_PER_IP
-            ? Timestamp.fromMillis(now.toMillis() + LOCKOUT_MS)
-            : null,
-          expiresAt: Timestamp.fromMillis(now.toMillis() + 2 * LOCKOUT_MS),
-          updatedAt: now,
-        }, { merge: true })
-        return {
-          created: false,
-          eventId,
-          failure: 'join-access',
-          locked: failedAttempts >= MAX_JOIN_ACCESS_FAILURES_PER_IP,
-          nickname,
-          participantUid: '',
-          verified: false,
-        }
-      }
       const registrationCount = Number(registrationSnapshot.get('count') ?? 0)
       const deviceRegistrationCount = Number(deviceRegistrationSnapshot.get('count') ?? 0)
       const ipRegistrationCount = Number(ipRegistrationSnapshot.get('count') ?? 0)
@@ -389,8 +326,6 @@ export const joinOrReenterParticipant = onCall(
       if (ipRegistrationCount >= MAX_NEW_PARTICIPANTS_PER_IP_WINDOW) {
         throw new HttpsError('resource-exhausted', '현장 네트워크의 신규 입장 한도에 도달했습니다. 주최자에게 문의해주세요.')
       }
-      if (joinAccessAttemptSnapshot.exists) transaction.delete(joinAccessAttemptRef)
-
       const participantUid = randomUUID()
       const participantRef = db.doc(`events/${eventId}/participants/${participantUid}`)
       const memberRef = db.doc(`events/${eventId}/members/${participantUid}`)
@@ -482,10 +417,7 @@ export const joinOrReenterParticipant = onCall(
       if (result.locked) {
         throw new HttpsError('resource-exhausted', '입장 시도가 잠시 잠겼습니다. 15분 뒤 다시 시도해주세요.')
       }
-      if (result.failure === 'join-access') {
-        throw new HttpsError('unauthenticated', '방 코드, 닉네임, PIN 또는 신규 입장 키를 다시 확인해주세요.')
-      }
-      throw new HttpsError('unauthenticated', '방 코드, 닉네임, PIN 또는 신규 입장 키를 다시 확인해주세요.')
+      throw new HttpsError('unauthenticated', '방 코드, 닉네임 또는 PIN을 다시 확인해주세요.')
     }
 
     const token = await auth.createCustomToken(result.participantUid, {
@@ -591,68 +523,5 @@ export const revealParticipantPin = onCall(
       },
       pin,
     }
-  },
-)
-
-export const manageJoinAccessCode = onCall(
-  {
-    ...FUNCTION_COST_GUARDRAILS,
-    region: REGION,
-    enforceAppCheck: true,
-    maxInstances: 3,
-    serviceAccount: PIN_RUNTIME_SERVICE_ACCOUNT,
-    secrets: [participantSecretKey],
-    timeoutSeconds: 30,
-  },
-  async (request) => {
-    const input = asRecord(request.data)
-    const eventId = safeDocumentId(requiredString(input, 'eventId', { max: 128 }), '행사 ID')
-    const action = requiredString(input, 'action', { max: 12 })
-    if (action !== 'reveal' && action !== 'rotate') {
-      throw new HttpsError('invalid-argument', '입장 키 작업을 확인해주세요.')
-    }
-    const actor = await requireOrganizer(eventId, request.auth)
-    requireRecentOrganizerAuth(request.auth)
-    const eventRef = db.doc(`events/${eventId}`)
-    const event = await eventRef.get()
-    if (!event.exists) throw new HttpsError('not-found', '행사를 찾을 수 없습니다.')
-
-    let code = ''
-    const encrypted = event.get('encryptedJoinAccessCode') as EncryptedPin | undefined
-    if (action === 'reveal' && encrypted) {
-      try {
-        code = decryptPin(participantSecretKey.value(), eventId, JOIN_ACCESS_SUBJECT, encrypted)
-      } catch {
-        throw new HttpsError('data-loss', '신규 입장 키를 해독할 수 없습니다.')
-      }
-    } else {
-      code = String(randomInt(0, 1_000_000)).padStart(6, '0')
-      const now = Timestamp.now()
-      await eventRef.set({
-        encryptedJoinAccessCode: encryptPin(
-          participantSecretKey.value(),
-          eventId,
-          JOIN_ACCESS_SUBJECT,
-          code,
-        ),
-        joinAccessCodeVerifier: createPinVerifier(
-          participantSecretKey.value(),
-          eventId,
-          JOIN_ACCESS_SUBJECT,
-          code,
-        ),
-        joinAccessCodeRotatedAt: now,
-        joinAccessCodeRotatedBy: actor.uid,
-        updatedAt: now,
-      }, { merge: true })
-    }
-    if (!/^\d{6}$/.test(code)) throw new HttpsError('data-loss', '신규 입장 키 형식이 올바르지 않습니다.')
-    await appendAuditLog({
-      action: `event.join-access.${action}`,
-      actor,
-      eventId,
-      metadata: { expiresInSeconds: 30 },
-    })
-    return { code, expiresInSeconds: 30 }
   },
 )

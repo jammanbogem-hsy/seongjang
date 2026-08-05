@@ -355,6 +355,43 @@ export function executePlatformCommand(
       )
     }
 
+    case 'REORDER_SLIDES': {
+      const currentIds = state.slides.map((slide) => slide.id)
+      if (
+        command.orderedSlideIds.length !== currentIds.length
+        || new Set(command.orderedSlideIds).size !== currentIds.length
+        || currentIds.some((slideId) => !command.orderedSlideIds.includes(slideId))
+      ) {
+        return error(state, 'INVALID_CONTENT', '현재 슬라이드와 정렬하려는 목록이 일치하지 않아요.')
+      }
+      const activeSlideId = state.slides[state.live.activeSlideIndex]?.id
+      const byId = new Map(state.slides.map((slide) => [slide.id, slide]))
+      const slides = command.orderedSlideIds.map((slideId, index) => ({
+        ...byId.get(slideId)!,
+        order: index + 1,
+      }))
+      return success(state, {
+        ...state,
+        slides,
+        live: {
+          ...state.live,
+          activeSlideIndex: Math.max(0, slides.findIndex((slide) => slide.id === activeSlideId)),
+        },
+      }, slides, '슬라이드 순서를 저장했어요.')
+    }
+
+    case 'END_SESSION': {
+      return success(state, {
+        ...state,
+        room: { ...state.room, lifecycle: 'ended' },
+        participants: state.participants.map((participant) => ({ ...participant, status: 'offline' })),
+        live: {
+          ...state.live,
+          timer: { ...state.live.timer, status: 'complete', remainingSec: 0, endsAt: null },
+        },
+      }, undefined, '세션을 종료하고 참여자 연결을 닫았어요.')
+    }
+
     case 'SET_ACTIVE_SLIDE': {
       if (!Number.isInteger(command.slideIndex) || !state.slides[command.slideIndex]) {
         return error(state, 'NOT_FOUND', '해당 슬라이드를 찾을 수 없어요.')
