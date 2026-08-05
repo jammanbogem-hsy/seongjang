@@ -71,7 +71,7 @@ export function Chip({
 }
 
 export interface StatusChipProps extends Omit<ChipBaseProps, 'children' | 'icon'> {
-  status: 'live' | 'ready' | 'waiting' | 'complete' | 'locked' | 'prototype'
+  status: 'live' | 'ready' | 'waiting' | 'complete' | 'locked'
   label?: string
 }
 
@@ -81,7 +81,6 @@ const statusMeta: Record<StatusChipProps['status'], { icon: string; label: strin
   waiting: { icon: 'schedule', label: '대기 중', tone: 'warning' },
   complete: { icon: 'task_alt', label: '완료', tone: 'success' },
   locked: { icon: 'lock', label: '잠김', tone: 'neutral' },
-  prototype: { icon: 'science', label: 'Prototype', tone: 'info' },
 }
 
 export function StatusChip({ status, label, ...props }: StatusChipProps) {

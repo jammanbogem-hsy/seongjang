@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link, NavLink } from '../app/router'
 import { Icon } from '../ui/Icon'
-import { Chip, StatusChip } from '../ui/Chip'
+import { Chip } from '../ui/Chip'
 import { cx } from '../ui/utils'
 
 export interface AppNavItem {
@@ -97,7 +97,6 @@ export function AppShell({
                 {roomCode}
               </Chip>
             ) : null}
-            <StatusChip className="app-shell__prototype-chip" status="prototype" />
           </div>
 
           {navItems.length > 0 ? <Navigation items={navItems} /> : null}

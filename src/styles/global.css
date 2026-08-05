@@ -1223,41 +1223,6 @@ select:focus-visible,
   font-size: 18px;
 }
 
-.identity-gate__examples {
-  display: grid;
-  justify-items: center;
-  width: min(100%, 580px);
-  gap: 8px;
-  margin-top: 34px;
-  padding-top: 26px;
-  border-top: 1px solid var(--outline);
-}
-
-.identity-gate__examples > strong {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ink-soft);
-  font-size: 13px;
-}
-
-.identity-gate__examples > p {
-  margin: 0;
-  font-size: 12px;
-}
-
-.identity-gate__example-buttons {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 2px 6px;
-}
-
-.identity-gate__example-buttons .ui-button {
-  color: var(--ink-soft);
-  font-weight: 650;
-}
-
 .muted { color: var(--ink-soft); }
 .small-text { font-size: 12px; }
 .text-center { text-align: center; }
@@ -1528,8 +1493,6 @@ select:focus-visible,
 .feature-copy h2 { max-width: 700px; margin: 0 0 18px; font-size: clamp(34px, 5vw, 58px); line-height: 1.08; letter-spacing: -.055em; word-break: keep-all; }
 .feature-copy > p { max-width: 670px; color: var(--ink-soft); font-size: 17px; line-height: 1.75; }
 .feature-band > img { width: 100%; max-height: 360px; object-fit: contain; mix-blend-mode: multiply; }
-.demo-reset { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 28px 0; }
-.demo-reset p { margin: 5px 0 0; color: var(--ink-soft); }
 
 .join-title { margin: 8px 0 15px; font-size: clamp(34px, 5vw, 52px); line-height: 1.12; letter-spacing: -.055em; word-break: keep-all; }
 .join-description { margin-bottom: 28px; line-height: 1.7; }
@@ -1660,7 +1623,6 @@ select:focus-visible,
   .hero-join-row input { min-height: 48px; text-align: center; }
   .feature-band { padding: 27px 22px; box-shadow: 5px 6px 0 var(--ink); }
   .feature-band > img { max-height: 230px; }
-  .demo-reset,
   .public-cta { align-items: stretch; flex-direction: column; }
   .stage-cat { right: 0; width: 42%; opacity: .5; }
   .list-item { align-items: flex-start; flex-wrap: wrap; }
@@ -1952,8 +1914,7 @@ select:focus-visible,
     display: none;
   }
 
-  .app-shell__mode-chip,
-  .app-shell__prototype-chip {
+  .app-shell__mode-chip {
     display: none;
   }
 

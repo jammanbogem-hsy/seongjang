@@ -60,15 +60,11 @@ function ParticipantIdentityGate({
   description,
   illustration,
   onCreate,
-  onSelect,
-  participants,
   title,
 }: {
   description: string
   illustration: 'lobby' | 'submission'
   onCreate: () => void
-  onSelect: (participantId: string) => void
-  participants: Participant[]
   title: string
 }) {
   return (
@@ -85,27 +81,13 @@ function ParticipantIdentityGate({
       >
         새 닉네임 만들기
       </Button>
-      {participants.length > 0 ? (
-        <div className="identity-gate__examples">
-          <strong><Icon name="science" size="sm" /> 프로토타입 예시</strong>
-          <p>아래 이름은 화면을 빠르게 둘러보기 위한 예시 데이터입니다.</p>
-          <div className="identity-gate__example-buttons">
-            {participants.map((participant) => (
-              <Button key={participant.id} onClick={() => onSelect(participant.id)} size="sm" variant="text">
-                예시 · {participant.nickname}
-              </Button>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </Card>
   )
 }
 
 export function LandingPage() {
   const navigate = useNavigate()
-  const { dispatch, state } = usePlatform()
-  const { notify, renderToasts } = useNotices()
+  const { state } = usePlatform()
   const [roomCode, setRoomCode] = useState(state.room.code)
 
   function join(event: FormEvent) {
@@ -140,7 +122,7 @@ export function LandingPage() {
             </form>
             <div className="button-row hero-actions">
               <Button leadingIcon="tune" onClick={() => navigate(`/admin/events/${EVENT_ID}/control`)} size="lg" variant="tonal">
-                주최자 데모 열기
+                주최자 로그인
               </Button>
               <Button leadingIcon="museum" onClick={() => navigate(`/exhibitions/${PUBLIC_SLUG}`)} size="lg" variant="outlined">
                 결과 전시 보기
@@ -155,7 +137,7 @@ export function LandingPage() {
 
         <section className="page section">
           <SectionHeader
-            description="역할을 바꾸어가며 전체 행사의 수명주기를 직접 확인하세요. 모든 버튼은 실제 프로토타입 상태와 연결됩니다."
+            description="주최자 운영, 참여자의 개인 기록, 공개 데이터가 하나의 행사 흐름으로 연결됩니다."
             eyebrow="ONE EVENT · THREE VIEWS"
             title="한 행사를 세 개의 시선으로"
           />
@@ -164,7 +146,7 @@ export function LandingPage() {
               <span className="role-number">01 · ORGANIZE</span>
               <h3>주최자 콘솔</h3>
               <p>슬라이드, 타이머, 공개 시점과 댓글을 제어하고 100명 안의 흐름을 읽습니다.</p>
-              <ResultLink to={`/admin/events/${EVENT_ID}/control`}>운영 리허설 시작</ResultLink>
+              <ResultLink to={`/admin/events/${EVENT_ID}/control`}>주최자 로그인</ResultLink>
             </article>
             <article className="role-card">
               <span className="role-number">02 · PARTICIPATE</span>
@@ -187,7 +169,7 @@ export function LandingPage() {
             <h2>행사가 끝나도 데이터는 다음 장면으로 갑니다.</h2>
             <p>답변과 댓글은 공개 범위를 거쳐 하나의 불변 리비전으로 발행됩니다. 같은 데이터가 대시보드, 임베드, 문서와 전시를 만듭니다.</p>
             <div className="chip-row">
-              <Chip icon="sync" tone="primary">탭 간 실시간 데모</Chip>
+              <Chip icon="sync" tone="primary">실시간 진행 동기화</Chip>
               <Chip icon="person" tone="warning">모두 개인 제출</Chip>
               <Chip icon="shield" tone="success">공개 데이터 분리</Chip>
             </div>
@@ -195,21 +177,7 @@ export function LandingPage() {
           <img alt="수집된 데이터를 살펴보는 고양이" src="/assets/retro/retro-cat-class-data-feedback.png" />
         </section>
 
-        <section className="page section demo-reset">
-          <div>
-            <strong>데모를 처음 상태로 되돌리고 싶나요?</strong>
-            <p>현재 브라우저에 저장된 답변, 댓글, 진행 상태를 큐레이션된 예시 데이터로 복원합니다.</p>
-          </div>
-          <Button
-            leadingIcon="restart_alt"
-            onClick={() => announceResult(dispatch({ type: 'RESET_DEMO' }), notify)}
-            variant="outlined"
-          >
-            데모 초기화
-          </Button>
-        </section>
       </main>
-      {renderToasts()}
     </PublicShell>
   )
 }
@@ -217,7 +185,7 @@ export function LandingPage() {
 export function JoinPage() {
   const navigate = useNavigate()
   const { roomCode = 'VIBE26' } = useParams()
-  const { dispatch, selectParticipant, state } = usePlatform()
+  const { dispatch, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
   const [nickname, setNickname] = useState('')
   const [pin, setPin] = useState('')
@@ -232,11 +200,6 @@ export function JoinPage() {
       return
     }
     setError(result.error.message)
-  }
-
-  function enterDemo(participant: Participant) {
-    selectParticipant(participant.id)
-    navigate(`/events/${EVENT_ID}/live`)
   }
 
   return (
@@ -274,15 +237,6 @@ export function JoinPage() {
               />
               <Button fullWidth size="lg" trailingIcon="arrow_forward" type="submit">입장하고 시작하기</Button>
             </form>
-            <div className="divider" />
-            <p className="small-text muted">입력 없이 둘러보려면</p>
-            <div className="button-row">
-              {state.participants.slice(0, 3).map((participant) => (
-                <Button key={participant.id} onClick={() => enterDemo(participant)} size="sm" variant="outlined">
-                  {participant.nickname}로 체험
-                </Button>
-              ))}
-            </div>
           </Card>
           <div className="join-art">
             <CatIllustration loading="eager" size="hero" variant="lobby" />
@@ -293,8 +247,8 @@ export function JoinPage() {
             </div>
           </div>
         </div>
-        <OutcomeNote tone="warm">
-          <strong>프로토타입 안내</strong><br />PIN은 이 브라우저에서만 흐름을 시연합니다. 운영판에서는 서버 측 암호화, 로그인 제한과 관리자 재인증이 필요합니다.
+        <OutcomeNote>
+          <strong>PIN 보관 안내</strong><br />PIN은 다시 입장하거나 주최자에게 참여 지원을 받을 때 사용됩니다. 잊지 않도록 안전한 곳에 보관해주세요.
         </OutcomeNote>
       </main>
       {renderToasts()}
@@ -312,7 +266,6 @@ export function ParticipantLivePage() {
     currentParticipant,
     currentSlide,
     dispatch,
-    selectParticipant,
     state,
     timerView,
   } = usePlatform()
@@ -341,8 +294,6 @@ export function ParticipantLivePage() {
             description="각자 만든 닉네임과 PIN으로 답변과 개인 작품을 안전하게 이어갑니다."
             illustration="lobby"
             onCreate={() => navigate(`/join/${state.room.code}`)}
-            onSelect={selectParticipant}
-            participants={state.participants.slice(0, 4)}
             title="나만의 참여자 이름으로 시작하세요."
           />
         </main>
@@ -531,7 +482,7 @@ export function ParticipantLivePage() {
 
 export function SubmissionPage() {
   const navigate = useNavigate()
-  const { currentParticipant, dispatch, selectParticipant, state } = usePlatform()
+  const { currentParticipant, dispatch, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
   const existing = state.submissions.find((submission) => submission.participantId === currentParticipant?.id)
   const [form, setForm] = useState(() => ({
@@ -587,8 +538,6 @@ export function SubmissionPage() {
             description="각자의 작품을 분리해 보관하기 위해 먼저 나만의 닉네임과 PIN을 만들어주세요."
             illustration="submission"
             onCreate={() => navigate(`/join/${state.room.code}`)}
-            onSelect={selectParticipant}
-            participants={state.participants.slice(0, 4)}
             title="개인 작품을 위한 이름을 만들어주세요."
           />
         </main>
@@ -661,8 +610,8 @@ export function OrganizerControlPage() {
   return (
     <OrganizerShell>
       <AdminLayout
-        actions={<StatusChip label="브라우저 탭 간 동기화 중" status="live" />}
-        description="페이지, 타이머, 답변 공개 상태를 한곳에서 제어합니다. 참여자 탭을 함께 열어 실시간 변화를 확인하세요."
+        actions={<StatusChip label="실시간 진행 동기화" status="live" />}
+        description="페이지, 타이머, 답변 공개 상태를 한곳에서 제어하고 모든 참여자의 화면에 반영합니다."
         eyebrow={`LIVE CONTROL · REVISION ${state.revision}`}
         title="지금 모두가 보고 있는 장면"
       >
@@ -732,7 +681,7 @@ export function OrganizerControlPage() {
         </div>
 
         <Card padding="lg">
-          <SectionHeader description="항목을 선택하면 모든 참여자 탭이 같은 단계로 이동합니다." eyebrow="DECK · 4 STEPS" title="진행 슬라이드" />
+          <SectionHeader description="항목을 선택하면 모든 참여자 화면이 같은 단계로 이동합니다." eyebrow="DECK · 4 STEPS" title="진행 슬라이드" />
           <div className="slide-list">
             {state.slides.map((slide, index) => {
               const count = state.answers.filter((answer) => answer.slideId === slide.id && answer.status === 'submitted').length
@@ -778,9 +727,9 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
   }
 
   const meta = {
-    participants: ['PARTICIPANTS · PRIVATE', '참여자와 재입장 지원', '닉네임, 접속 상태와 개인 제출 현황을 확인합니다. PIN 확인은 한 명씩 명시적인 사유를 남기는 UX로 시연합니다.'],
+    participants: ['PARTICIPANTS · PRIVATE', '참여자와 재입장 지원', '닉네임, 접속 상태와 개인 제출 현황을 확인합니다. PIN은 명시적인 조회 사유를 입력한 뒤 한 명씩 확인할 수 있습니다.'],
     submissions: ['INDIVIDUAL WORKS', '개인 작품 제출 현황', '참여자마다 한 작품만 제출합니다. 공개 전시에는 제출 완료된 작품만 포함됩니다.'],
-    admins: ['ACCESS · PROTOTYPE', '관리자 초대와 권한', '초대 이메일과 일치하는 Google 계정으로 권한을 수락하는 운영 흐름을 시뮬레이션합니다.'],
+    admins: ['ACCESS MANAGEMENT', '관리자 초대와 권한', '초대 이메일과 일치하는 계정이 관리자 권한을 수락하고 행사 운영에 참여합니다.'],
     portability: ['PORTABLE EVENT DATA', '다른 행사와 도구로 연결', '동일한 공개 리비전에서 JSON, CSV, Markdown, README와 iframe 코드를 만듭니다.'],
   }[section]
 
@@ -814,7 +763,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
               <StatCard icon="wifi" label="온라인" trend="실시간 상태" value={`${state.participants.filter((participant) => participant.status === 'online').length}명`} />
               <StatCard icon="assignment_turned_in" label="개인 제출" value={`${state.submissions.filter((submission) => submission.status === 'submitted').length}명`} />
             </div>
-            <OutcomeNote tone="warm"><strong>민감정보 프로토타입</strong><br />현재 PIN 확인은 화면 흐름만 보여줍니다. 운영판은 관리자 Google 재인증, 사유 기록, 암호화 저장과 감사 로그가 필요합니다.</OutcomeNote>
+            <OutcomeNote tone="warm"><strong>PIN 조회 정책</strong><br />재입장 지원이 필요한 경우에만 조회 사유를 입력하세요. 한 번에 한 명의 PIN을 30초 동안 확인할 수 있습니다.</OutcomeNote>
             <Card padding="lg">
               <div className="split mobile-stack operations-filter">
                 <Field leadingIcon="search" label="닉네임 검색" onChange={(event) => setQuery(event.target.value)} placeholder="참여자 찾기" value={query} />
@@ -898,7 +847,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
             <Card padding="lg">
               <SectionHeader actions={<Button disabled={!snapshot} leadingIcon="content_copy" onClick={copyEmbed} variant="tonal">코드 복사</Button>} description="다른 서비스에 붙여 넣을 수 있는 읽기 전용 대시보드입니다." eyebrow="EMBED" title="iframe 연결" />
               <pre className="code-block">{snapshot ? createEmbedSnippet(snapshot) : '먼저 정리 대시보드를 발행해주세요.'}</pre>
-              <OutcomeNote tone="warm">프로토타입 URL입니다. 운영판에서는 허용 origin, CSP frame-ancestors와 공개 회수 정책을 서버에서 검사합니다.</OutcomeNote>
+              <OutcomeNote tone="warm">iframe에는 주최자가 발행한 최신 공개 리비전과 공개 허용 범위만 반영됩니다.</OutcomeNote>
             </Card>
           </>
         ) : null}
@@ -908,17 +857,17 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
         actions={
           <>
             <Button onClick={closePinDialog} variant="text">닫기</Button>
-            <Button disabled={!pinReason.trim()} leadingIcon="visibility" onClick={() => { setPinVisible(true); notify('PIN 조회 사유를 감사 이력에 기록한 것으로 시뮬레이션했습니다.', 'warning') }} variant="danger">PIN 확인</Button>
+            <Button disabled={!pinReason.trim()} leadingIcon="visibility" onClick={() => { setPinVisible(true); notify('PIN을 30초 동안 표시합니다.', 'warning') }} variant="danger">PIN 확인</Button>
           </>
         }
-        description="한 명의 PIN만 확인하며 운영판에서는 최근 Google 재인증을 요구합니다."
+        description="재입장 지원을 위해 한 명의 PIN만 30초 동안 확인합니다."
         onClose={closePinDialog}
         open={Boolean(pinParticipant)}
         size="sm"
         title={`${pinParticipant?.nickname ?? ''}님의 재입장 지원`}
       >
         {pinVisible ? (
-          <div className="pin-reveal"><span>{pinParticipant?.pin}</span><p>30초 뒤 자동으로 가려지는 흐름을 시연합니다.</p></div>
+          <div className="pin-reveal"><span>{pinParticipant?.pin}</span><p>보안을 위해 30초 뒤 자동으로 가려집니다.</p></div>
         ) : (
           <Field label="조회 사유" onChange={(event) => setPinReason(event.target.value)} required value={pinReason} />
         )}
@@ -1238,7 +1187,7 @@ function PublicEmpty({ title }: { title: string }) {
           <CatIllustration size="lg" variant="exhibition" />
           <h1>{title}</h1>
           <p>주최자 콘솔에서 정리 세션을 발행하거나 전시를 공개해주세요.</p>
-          <Button onClick={() => window.location.assign(`/admin/events/${EVENT_ID}/synthesis`)}>주최자 정리 세션으로</Button>
+          <Button onClick={() => window.location.assign('/')}>홈으로 돌아가기</Button>
         </Card>
       </main>
     </PublicShell>
@@ -1252,7 +1201,7 @@ export function NotFoundPage() {
         <Card className="empty-state" padding="lg">
           <CatIllustration size="lg" variant="lobby" />
           <h1>이 페이지는 아직 준비 중이에요.</h1>
-          <p>프로토타입 홈에서 주최자, 참여자 또는 공개 전시 흐름을 선택해주세요.</p>
+          <p>VibeCoding 홈에서 참여할 행사나 공개 전시를 찾아보세요.</p>
           <ResultLink to="/">홈으로 돌아가기</ResultLink>
         </Card>
       </main>

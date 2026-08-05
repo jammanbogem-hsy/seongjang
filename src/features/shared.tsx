@@ -67,25 +67,9 @@ export function announceResult<T>(
 }
 
 export function OrganizerShell({ children }: { children: ReactNode }) {
-  const navigate = useNavigate()
   const { state } = usePlatform()
   return (
     <AppShell
-      actions={
-        <>
-          <Button
-            className="keep-mobile"
-            leadingIcon="open_in_new"
-            onClick={() => window.open(`/events/${EVENT_ID}/live`, '_blank', 'noopener,noreferrer')}
-            variant="tonal"
-          >
-            참여자 화면
-          </Button>
-          <Button leadingIcon="home" onClick={() => navigate('/')} variant="text">
-            홈
-          </Button>
-        </>
-      }
       brandTo={`/admin/events/${EVENT_ID}/control`}
       mode="organizer"
       navItems={organizerNav}
@@ -97,15 +81,9 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
 }
 
 export function ParticipantShell({ children }: { children: ReactNode }) {
-  const navigate = useNavigate()
   const { currentParticipant, state } = usePlatform()
   return (
     <AppShell
-      actions={
-        <Button className="keep-mobile" leadingIcon="swap_horiz" onClick={() => navigate(`/admin/events/${EVENT_ID}/control`)} variant="tonal">
-          역할 전환
-        </Button>
-      }
       brandTo={`/events/${EVENT_ID}/live`}
       mode="participant"
       navItems={participantNav}
@@ -113,8 +91,8 @@ export function ParticipantShell({ children }: { children: ReactNode }) {
     >
       <div className="session-strip" role="status">
         <span className="session-strip__signal"><Icon filled name="sensors" size="sm" /></span>
-        <strong>{currentParticipant?.nickname ?? '게스트'}</strong>
-        <span>님의 탭 · 다른 탭의 주최자 제어와 동기화됩니다</span>
+        <strong>{currentParticipant?.nickname ?? '입장 전'}</strong>
+        <span>{currentParticipant ? '님의 참여 화면 · 주최자의 진행과 실시간으로 동기화됩니다' : '· 닉네임과 PIN을 만들면 행사에 참여할 수 있습니다'}</span>
         <Icon name="sync" size="sm" />
       </div>
       {children}
@@ -142,7 +120,7 @@ export function PublicShell({ children }: { children: ReactNode }) {
           <strong>VibeCoding</strong>
           <p>한 사람의 생각부터 모두의 기록까지.</p>
         </div>
-        <span>Prototype · Firebase 운영판 연결 예정</span>
+        <span>참여자의 기록과 공개 범위를 소중하게 보호합니다.</span>
       </footer>
     </AppShell>
   )

@@ -478,7 +478,7 @@ export function executePlatformCommand(
         state,
         { ...state, adminInvites: [...state.adminInvites, invite] },
         invite,
-        '프로토타입 초대를 보냈어요.',
+        '관리자 초대를 보냈어요.',
       )
     }
 
