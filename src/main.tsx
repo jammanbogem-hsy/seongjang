@@ -4,6 +4,7 @@ import { App } from './app/App'
 import { PlatformProvider } from './app/PlatformProvider'
 import { RouterProvider, useLocation } from './app/router'
 import './styles/global.css'
+import './styles/google-workspace.css'
 
 function RuntimeApp() {
   const { pathname } = useLocation()

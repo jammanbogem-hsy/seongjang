@@ -42,9 +42,12 @@ function ProductMark() {
   )
 }
 
-function Navigation({ items, mobile = false }: { items: AppNavItem[]; mobile?: boolean }) {
+function Navigation({ items, mobile = false, rail = false }: { items: AppNavItem[]; mobile?: boolean; rail?: boolean }) {
+  const className = rail ? 'app-shell__desktop-rail' : mobile ? 'app-shell__mobile-nav' : 'app-shell__nav'
+  const label = rail ? '주최자 주요 메뉴' : mobile ? '모바일 주요 메뉴' : '주요 메뉴'
+
   return (
-    <nav aria-label={mobile ? '모바일 주요 메뉴' : '주요 메뉴'} className={mobile ? 'app-shell__mobile-nav' : 'app-shell__nav'}>
+    <nav aria-label={label} className={className}>
       {items.map((item) => (
         <NavLink
           className={({ isActive }) => cx('app-shell__nav-link', isActive && 'app-shell__nav-link--active')}
@@ -54,7 +57,7 @@ function Navigation({ items, mobile = false }: { items: AppNavItem[]; mobile?: b
         >
           {item.icon ? (
             <span className="app-shell__nav-icon">
-              <Icon filled={mobile} name={item.icon} size={mobile ? 'md' : 'sm'} />
+              <Icon filled={mobile || rail} name={item.icon} size={mobile ? 'md' : 'sm'} />
             </span>
           ) : null}
           <span>{item.label}</span>
@@ -99,11 +102,12 @@ export function AppShell({
             ) : null}
           </div>
 
-          {navItems.length > 0 ? <Navigation items={navItems} /> : null}
+          {navItems.length > 0 && mode !== 'organizer' ? <Navigation items={navItems} /> : null}
           {actions ? <div className="app-shell__actions">{actions}</div> : null}
         </div>
       </header>
 
+      {mode === 'organizer' && navItems.length > 0 ? <Navigation items={navItems} rail /> : null}
       <div className="app-shell__body">{children}</div>
       {footer ? <footer className="app-shell__footer">{footer}</footer> : null}
       {navItems.length > 0 ? <Navigation items={navItems} mobile /> : null}

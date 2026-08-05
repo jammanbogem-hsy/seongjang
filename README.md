@@ -44,7 +44,8 @@ npm --prefix functions run check
 ## 제품 구조
 
 - React + TypeScript + Vite
-- Material Design 3 토큰·컴포넌트 규칙을 따른 UI와 Material Symbols
+- Google Drive의 정보 밀도를 참고한 Material Design 3 UI: Google Sans Flex·Noto Sans KR, Material Symbols, 단일 Google Blue와 절제된 중립색 표면
+- 데스크톱 주최자용 좌측 작업공간 내비게이션, 참여자·공개 화면용 상단 내비게이션, 모바일 하단 내비게이션
 - 반응형 주최자 콘솔, 집중형 참여자 화면, 공개 전시 레이아웃
 - Firebase Authentication: Google 주최자 계정, 일회용 이메일 관리자 초대, 익명 사전 인증 후 닉네임·PIN 기반 참여자 custom token
 - Cloud Firestore: 서울 `asia-northeast3`, 운영 메모리 캐시, 실시간 listener
