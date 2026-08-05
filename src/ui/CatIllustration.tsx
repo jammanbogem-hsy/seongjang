@@ -2,7 +2,7 @@ import type { ImgHTMLAttributes } from 'react'
 import { cx } from './utils'
 
 export type CatIllustrationVariant = 'lobby' | 'ideation' | 'timer' | 'submission' | 'exhibition'
-export type CatIllustrationSize = 'sm' | 'md' | 'lg' | 'hero'
+export type CatIllustrationSize = 'xs' | 'sm' | 'md' | 'lg' | 'hero'
 
 const catSources: Record<CatIllustrationVariant, string> = {
   lobby: '/assets/illustrations/cat-lobby.png',
@@ -35,10 +35,12 @@ export function CatIllustration({
   loading = 'lazy',
   ...props
 }: CatIllustrationProps) {
-  const legacySize = size === 'sm' ? 'cat-sm' : size === 'md' ? 'cat-md' : 'cat-lg'
+  const legacySize = size === 'xs' || size === 'sm' ? 'cat-sm' : size === 'md' ? 'cat-md' : 'cat-lg'
   return (
     <img
+      {...props}
       alt={decorative ? '' : (alt ?? catDescriptions[variant])}
+      aria-hidden={decorative || undefined}
       className={cx(
         'cat-illustration',
         'pixelated',
@@ -48,9 +50,9 @@ export function CatIllustration({
         className,
       )}
       decoding="async"
+      draggable={false}
       loading={loading}
       src={catSources[variant]}
-      {...props}
     />
   )
 }

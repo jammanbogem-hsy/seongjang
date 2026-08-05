@@ -19,6 +19,8 @@ import {
   Field,
   Icon,
   IconButton,
+  MascotAction,
+  MascotCue,
   Progress,
   SectionHeader,
   Select,
@@ -373,10 +375,10 @@ export function ParticipantLivePage() {
                     <Chip icon="lock" tone="info">공개 전 비공개</Chip>
                     {ownAnswer?.status === 'submitted' ? <Chip icon="check_circle" tone="success">제출됨</Chip> : null}
                   </span>
-                  <div className="button-row">
+                  <MascotAction compactOnly label="좋아요, 이제 제출해요!" variant="ideation">
                     <Button disabled={!answerText.trim()} onClick={() => saveAnswer(false)} variant="text">임시 저장</Button>
                     <Button disabled={!answerText.trim() || timerView.status === 'complete'} leadingIcon="send" onClick={() => saveAnswer(true)}>개인 답변 제출</Button>
-                  </div>
+                  </MascotAction>
                 </div>
               </div>
             ) : (
@@ -576,10 +578,10 @@ export function SubmissionPage() {
             <Textarea label="제작 회고" maxLength={1200} onChange={(event) => update('retrospective', event.target.value)} required rows={5} showCount value={form.retrospective} />
             <div className="split mobile-stack">
               <span className="small-text muted">실행 URL 또는 GitHub URL 중 하나는 필수입니다.</span>
-              <div className="button-row">
+              <MascotAction compactOnly label="멋진 작품을 기다릴게요!" variant="submission">
                 <Button onClick={() => save(false)} variant="text">임시 저장</Button>
                 <Button leadingIcon="rocket_launch" onClick={() => save(true)}>개인 작품 제출</Button>
-              </div>
+              </MascotAction>
             </div>
           </div>
         </Card>
@@ -781,6 +783,13 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
                     </div>
                   )
                 })}
+                {!filtered.length ? (
+                  <MascotCue
+                    description="닉네임 철자를 다시 확인하거나 검색어를 조금 줄여보세요."
+                    title="찾는 참여자가 보이지 않아요"
+                    variant="lobby"
+                  />
+                ) : null}
               </div>
             </Card>
           </>
@@ -799,12 +808,20 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
                 전시 {state.exhibitionPublished ? '회수' : '공개'}
               </Button>
             </div>
-            <div className="exhibition-grid">
-              {state.submissions.map((submission) => {
-                const maker = state.participants.find((participant) => participant.id === submission.participantId)
-                return <ProjectCard key={submission.id} maker={maker?.nickname ?? '참가자'} project={submission} />
-              })}
-            </div>
+            {state.submissions.length ? (
+              <div className="exhibition-grid">
+                {state.submissions.map((submission) => {
+                  const maker = state.participants.find((participant) => participant.id === submission.participantId)
+                  return <ProjectCard key={submission.id} maker={maker?.nickname ?? '참가자'} project={submission} />
+                })}
+              </div>
+            ) : (
+              <MascotCue
+                description="참여자의 첫 번째 개인 작품이 제출되면 이곳에서 검토할 수 있어요."
+                title="아직 도착한 작품이 없어요"
+                variant="submission"
+              />
+            )}
           </>
         ) : null}
 
@@ -834,6 +851,12 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
 
         {section === 'portability' ? (
           <>
+            <MascotCue
+              className="operations-mascot-cue"
+              description="공개 리비전을 필요한 형식으로 내려받아 다음 행사와 다른 서비스에 이어가세요."
+              title="행사 기록을 안전하게 옮겨드릴게요"
+              variant="submission"
+            />
             <div className="grid four export-grid">
               {(['json', 'csv', 'markdown', 'readme'] as ExportFormat[]).map((format) => (
                 <Card interactive key={format} padding="lg">
@@ -1079,7 +1102,9 @@ export function DashboardPage() {
 
         <section className="public-cta">
           <div><span className="eyebrow">INDIVIDUAL EXHIBITION</span><h2>{data.metrics.projectCount}개의 아이디어가 작품이 되었습니다.</h2><p>모든 결과물은 한 사람의 이름으로 제출되고, 다음 행사에서도 읽을 수 있는 README로 이어집니다.</p></div>
-          <Button leadingIcon="museum" onClick={() => window.location.assign(`/exhibitions/${PUBLIC_SLUG}`)} size="lg">작품 전시 보기</Button>
+          <MascotAction label="전시 고양이가 기다려요" variant="exhibition">
+            <Button leadingIcon="museum" onClick={() => window.location.assign(`/exhibitions/${PUBLIC_SLUG}`)} size="lg">작품 전시 보기</Button>
+          </MascotAction>
         </section>
       </main>
     </PublicShell>

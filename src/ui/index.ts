@@ -1,6 +1,7 @@
 export * from './Button'
 export * from './Card'
 export * from './CatIllustration'
+export * from './Mascot'
 export * from './Chip'
 export * from './Dialog'
 export * from './Field'
