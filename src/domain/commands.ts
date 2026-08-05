@@ -69,6 +69,10 @@ function iso(now: number): string {
   return new Date(now).toISOString()
 }
 
+function withTimerMinutes(eyebrow: string, durationSec: number): string {
+  return eyebrow.replace(/·\s*\d+\s*분\s*$/u, `· ${Math.round(durationSec / 60)}분`)
+}
+
 export function getTimerView(timer: PrototypeState['live']['timer'], now = Date.now()): TimerView {
   const computedRemaining =
     timer.status === 'running' && timer.endsAt !== null
@@ -253,6 +257,43 @@ export function executePlatformCommand(
       )
     }
 
+    case 'SET_TIMER_DURATION': {
+      if (
+        !Number.isInteger(command.durationSec)
+        || command.durationSec < 60
+        || command.durationSec > 10_800
+      ) {
+        return error(state, 'INVALID_CONTENT', '타이머는 1분에서 180분 사이로 설정해주세요.')
+      }
+      if (state.live.timer.status === 'running') {
+        return error(state, 'NOT_ALLOWED', '진행 중인 타이머를 일시정지한 뒤 시간을 변경해주세요.')
+      }
+      const activeSlide = state.slides[state.live.activeSlideIndex]
+      if (!activeSlide) return error(state, 'NOT_FOUND', '현재 슬라이드를 찾을 수 없어요.')
+      const timer = {
+        durationSec: command.durationSec,
+        remainingSec: command.durationSec,
+        status: 'idle' as const,
+        endsAt: null,
+      }
+      return success(
+        state,
+        {
+          ...state,
+          slides: state.slides.map((slide) => slide.id === activeSlide.id
+            ? {
+                ...slide,
+                durationSec: command.durationSec,
+                eyebrow: withTimerMinutes(slide.eyebrow, command.durationSec),
+              }
+            : slide),
+          live: { ...state.live, timer },
+        },
+        timer,
+        `현재 단계 타이머를 ${Math.round(command.durationSec / 60)}분으로 설정했어요.`,
+      )
+    }
+
     case 'START_TIMER':
     case 'RESUME_TIMER': {
       const timerView = getTimerView(state.live.timer, now)
@@ -332,6 +373,35 @@ export function executePlatformCommand(
         },
         command.enabled,
         command.enabled ? '댓글 작성을 열었어요.' : '댓글 작성을 잠갔어요.',
+      )
+    }
+
+    case 'UPDATE_SLIDE': {
+      const { input } = command
+      const slide = state.slides.find((candidate) => candidate.id === input.slideId)
+      if (!slide) return error(state, 'NOT_FOUND', '편집할 슬라이드를 찾을 수 없어요.')
+      const eyebrow = input.eyebrow.trim()
+      const title = input.title.trim()
+      const prompt = input.prompt.trim()
+      const helper = input.helper.trim()
+      if (!eyebrow || eyebrow.length > 80) {
+        return error(state, 'INVALID_CONTENT', '단계 이름은 1자 이상 80자 이하로 입력해주세요.')
+      }
+      if (!title || title.length > 160) {
+        return error(state, 'INVALID_CONTENT', '슬라이드 제목은 1자 이상 160자 이하로 입력해주세요.')
+      }
+      if (!prompt || prompt.length > 800 || helper.length > 500) {
+        return error(state, 'INVALID_CONTENT', '질문은 800자, 도움말은 500자 이하로 입력해주세요.')
+      }
+      const updated = { ...slide, eyebrow, title, prompt, helper }
+      return success(
+        state,
+        {
+          ...state,
+          slides: state.slides.map((candidate) => candidate.id === slide.id ? updated : candidate),
+        },
+        updated,
+        '슬라이드 내용을 모든 화면에 반영했어요.',
       )
     }
 

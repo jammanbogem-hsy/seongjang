@@ -348,16 +348,26 @@ export interface UpdateSynthesisInput {
   highlightAnswerIds?: Identifier[]
 }
 
+export interface UpdateSlideInput {
+  slideId: Identifier
+  eyebrow: string
+  title: string
+  prompt: string
+  helper: string
+}
+
 export type PlatformCommand =
   | { type: 'JOIN_PARTICIPANT'; input: JoinParticipantInput }
   | { type: 'SET_PARTICIPANT_STATUS'; participantId: Identifier; status: ParticipantStatus }
   | { type: 'SET_ACTIVE_SLIDE'; slideIndex: number }
+  | { type: 'SET_TIMER_DURATION'; durationSec: number }
   | { type: 'START_TIMER' }
   | { type: 'PAUSE_TIMER' }
   | { type: 'RESUME_TIMER' }
   | { type: 'RESET_TIMER' }
   | { type: 'SET_ANSWERS_REVEALED'; slideId: Identifier; revealed: boolean }
   | { type: 'SET_COMMENTS_ENABLED'; slideId: Identifier; enabled: boolean }
+  | { type: 'UPDATE_SLIDE'; input: UpdateSlideInput }
   | { type: 'SAVE_ANSWER'; input: SaveAnswerInput }
   | { type: 'ADD_COMMENT'; input: AddCommentInput }
   | { type: 'UPDATE_COMMENT'; input: UpdateCommentInput }

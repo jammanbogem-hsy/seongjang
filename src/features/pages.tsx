@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -13,6 +14,7 @@ import type {
   Participant,
   PublicProject,
   Submission,
+  UpdateSlideInput,
   UpdateSynthesisInput,
 } from '../domain/models'
 import { downloadTextExport } from '../platform/download'
@@ -984,8 +986,19 @@ export function SubmissionPage() {
 
 export function OrganizerControlPage() {
   const { currentSlide, dispatchAsync, state, timerView } = usePlatform()
+  const currentSlideRef = useRef(currentSlide)
+  currentSlideRef.current = currentSlide
   const { notify, renderToasts } = useNotices()
   const [reviewAnswerId, setReviewAnswerId] = useState<string | null>(null)
+  const [durationMinutes, setDurationMinutes] = useState(() => String(Math.round(currentSlide.durationSec / 60)))
+  const [slideEditorOpen, setSlideEditorOpen] = useState(false)
+  const [slideDraft, setSlideDraft] = useState<UpdateSlideInput>(() => ({
+    slideId: currentSlide.id,
+    eyebrow: currentSlide.eyebrow,
+    title: currentSlide.title,
+    prompt: currentSlide.prompt,
+    helper: currentSlide.helper,
+  }))
   const revealed = Boolean(state.live.answersRevealedBySlide[currentSlide.id])
   const commentsEnabled = Boolean(state.live.commentsEnabledBySlide[currentSlide.id])
   const recentlyActiveCount = state.participants.filter(
@@ -995,10 +1008,76 @@ export function OrganizerControlPage() {
   const stageAnswers = state.answers.filter((answer) => answer.slideId === currentSlide.id && answer.status === 'submitted')
   const submittedCount = state.submissions.filter((submission) => submission.status === 'submitted').length
   const reviewAnswer = stageAnswers.find((answer) => answer.id === reviewAnswerId)
+  const slideDraftValid = Boolean(
+    slideDraft.eyebrow.trim()
+    && slideDraft.title.trim()
+    && slideDraft.prompt.trim()
+    && slideDraft.eyebrow.trim().length <= 80
+    && slideDraft.title.trim().length <= 160
+    && slideDraft.prompt.trim().length <= 800
+    && slideDraft.helper.trim().length <= 500
+  )
+  const slideDraftDirty = slideDraft.slideId === currentSlide.id && (
+    slideDraft.eyebrow !== currentSlide.eyebrow
+    || slideDraft.title !== currentSlide.title
+    || slideDraft.prompt !== currentSlide.prompt
+    || slideDraft.helper !== currentSlide.helper
+  )
+
+  const {
+    flush: flushSlideAutosave,
+    phase: slideAutosavePhase,
+    savedAt: slideAutosavedAt,
+  } = useAutosave({
+    delay: 900,
+    enabled: slideEditorOpen && slideDraftValid && slideDraftDirty,
+    fingerprint: JSON.stringify(slideDraft),
+    save: async () => {
+      const result = await dispatchAsync({ type: 'UPDATE_SLIDE', input: slideDraft })
+      if (!result.ok) {
+        notify(result.error.message, 'danger')
+        return false
+      }
+      return true
+    },
+  })
 
   useEffect(() => {
+    const nextSlide = currentSlideRef.current
     setReviewAnswerId(null)
+    setDurationMinutes(String(Math.round(nextSlide.durationSec / 60)))
+    setSlideDraft({
+      slideId: nextSlide.id,
+      eyebrow: nextSlide.eyebrow,
+      title: nextSlide.title,
+      prompt: nextSlide.prompt,
+      helper: nextSlide.helper,
+    })
+    setSlideEditorOpen(false)
   }, [currentSlide.id])
+
+  useEffect(() => {
+    if (timerView.status !== 'running') {
+      setDurationMinutes(String(Math.round(state.live.timer.durationSec / 60)))
+    }
+  }, [state.live.timer.durationSec, timerView.status])
+
+  const closeSlideEditor = useCallback(async () => {
+    if (!slideDraftDirty) {
+      setSlideEditorOpen(false)
+      return
+    }
+    if (!slideDraftValid) {
+      notify('필수 내용을 입력하고 글자 수를 확인해주세요.', 'danger')
+      return
+    }
+    const saved = await flushSlideAutosave()
+    if (!saved) {
+      notify('슬라이드 저장을 완료하지 못했습니다. 연결 상태를 확인해주세요.', 'danger')
+      return
+    }
+    setSlideEditorOpen(false)
+  }, [flushSlideAutosave, notify, slideDraftDirty, slideDraftValid])
 
   function run(command: Parameters<typeof dispatchAsync>[0]) {
     void dispatchAsync(command).then((result) => announceResult(result, notify))
@@ -1007,6 +1086,33 @@ export function OrganizerControlPage() {
   function move(offset: number) {
     const next = Math.min(Math.max(state.live.activeSlideIndex + offset, 0), state.slides.length - 1)
     run({ type: 'SET_ACTIVE_SLIDE', slideIndex: next })
+  }
+
+  function openSlideEditor() {
+    setSlideDraft({
+      slideId: currentSlide.id,
+      eyebrow: currentSlide.eyebrow,
+      title: currentSlide.title,
+      prompt: currentSlide.prompt,
+      helper: currentSlide.helper,
+    })
+    setSlideEditorOpen(true)
+  }
+
+  function updateSlideDraft(field: Exclude<keyof UpdateSlideInput, 'slideId'>, value: string) {
+    setSlideDraft((current) => ({ ...current, [field]: value }))
+  }
+
+  async function applyTimerDuration(minutes = Number(durationMinutes)) {
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
+      notify('타이머는 1분에서 180분 사이의 정수로 입력해주세요.', 'danger')
+      return
+    }
+    setDurationMinutes(String(minutes))
+    announceResult(
+      await dispatchAsync({ type: 'SET_TIMER_DURATION', durationSec: minutes * 60 }),
+      notify,
+    )
   }
 
   return (
@@ -1019,7 +1125,7 @@ export function OrganizerControlPage() {
       >
         <div className="grid four">
           <StatCard detail={`정원 ${state.room.capacity}명`} icon="groups" label="입장 참여자" trend={`${recentlyActiveCount}명 최근 활동`} value={`${state.participants.length}명`} />
-          <StatCard detail="현재 단계" icon="edit_note" label="개인 답변" trend={`${stageAnswerCount}개 수합`} trendTone="primary" value={`${Math.round((stageAnswerCount / state.participants.length) * 100)}%`} />
+          <StatCard detail="현재 단계" icon="edit_note" label="개인 답변" trend={`${stageAnswerCount}개 수합`} trendTone="primary" value={`${state.participants.length ? Math.round((stageAnswerCount / state.participants.length) * 100) : 0}%`} />
           <StatCard detail="공개 후 댓글" icon="forum" label="댓글" trend={commentsEnabled ? '작성 열림' : '잠김'} trendTone={commentsEnabled ? 'success' : 'neutral'} value={`${state.comments.length}개`} />
           <StatCard detail="모두 개인 작품" icon="rocket_launch" label="최종 제출" trend={`${state.participants.length - submittedCount}명 남음`} trendTone="warning" value={`${submittedCount}개`} />
         </div>
@@ -1029,7 +1135,10 @@ export function OrganizerControlPage() {
           <section className="stage-card" aria-live="polite">
             <div className="stage-kicker">
               <span>{currentSlide.eyebrow}</span>
-              <Chip tone={revealed ? 'success' : 'info'}>{revealed ? '답변 공개됨' : '개인 작성 중'}</Chip>
+              <div className="stage-kicker__actions">
+                <Chip tone={revealed ? 'success' : 'info'}>{revealed ? '답변 공개됨' : '개인 작성 중'}</Chip>
+                <Button className="stage-edit-button" leadingIcon="edit" onClick={openSlideEditor} size="sm" variant="tonal">슬라이드 편집</Button>
+              </div>
             </div>
             <h2>{currentSlide.title}</h2>
             <p>{currentSlide.prompt}</p>
@@ -1043,6 +1152,41 @@ export function OrganizerControlPage() {
               <Progress max={state.live.timer.durationSec} tone="warning" value={timerView.remainingSec} />
             </div>
             <Card padding="md">
+              <div className="timer-settings">
+                <div className="timer-settings__row">
+                  <Field
+                    disabled={timerView.status === 'running'}
+                    fieldClassName="timer-duration-field"
+                    inputMode="numeric"
+                    label="현재 단계 시간 (분)"
+                    max={180}
+                    min={1}
+                    onChange={(event) => setDurationMinutes(event.target.value)}
+                    type="number"
+                    value={durationMinutes}
+                  />
+                  <Button
+                    disabled={timerView.status === 'running' || Number(durationMinutes) * 60 === state.live.timer.durationSec}
+                    leadingIcon="timer"
+                    onClick={() => { void applyTimerDuration() }}
+                    size="sm"
+                    variant="tonal"
+                  >시간 적용</Button>
+                </div>
+                <div aria-label="빠른 시간 설정" className="timer-presets">
+                  {[5, 10, 15, 20].map((minutes) => (
+                    <Button
+                      disabled={timerView.status === 'running'}
+                      key={minutes}
+                      onClick={() => { void applyTimerDuration(minutes) }}
+                      size="sm"
+                      variant={Number(durationMinutes) === minutes ? 'tonal' : 'text'}
+                    >{minutes}분</Button>
+                  ))}
+                </div>
+                <p className="small-text muted">슬라이드별 기본 시간으로 저장되며 참여자 화면에도 즉시 반영됩니다.</p>
+              </div>
+              <div className="divider" />
               <div className="control-pad">
                 <IconButton disabled={state.live.activeSlideIndex === 0} icon="arrow_back" label="이전 슬라이드" onClick={() => move(-1)} variant="outlined" />
                 {timerView.status === 'running' ? (
@@ -1140,6 +1284,55 @@ export function OrganizerControlPage() {
           />
         ) : null}
       </AdminLayout>
+      <Dialog
+        actions={(
+          <Button leadingIcon="done" onClick={() => { void closeSlideEditor() }}>
+            편집 완료
+          </Button>
+        )}
+        description="입력 내용은 Firebase에 자동 저장되고 참여자의 현재 슬라이드에 실시간 반영됩니다."
+        onClose={() => { void closeSlideEditor() }}
+        open={slideEditorOpen}
+        size="lg"
+        title={`${currentSlide.order}단계 슬라이드 편집`}
+      >
+        <div className="form-grid slide-editor-form">
+          <OutcomeNote><strong>실시간 공동 진행</strong><br />주최자가 질문을 고치면 같은 페이지를 보고 있는 참여자도 새 내용을 바로 확인합니다.</OutcomeNote>
+          <Field
+            label="단계 이름"
+            maxLength={80}
+            onChange={(event) => updateSlideDraft('eyebrow', event.target.value)}
+            required
+            value={slideDraft.eyebrow}
+          />
+          <Field
+            label="슬라이드 제목"
+            maxLength={160}
+            onChange={(event) => updateSlideDraft('title', event.target.value)}
+            required
+            value={slideDraft.title}
+          />
+          <Textarea
+            label="참여자 질문"
+            maxLength={800}
+            onChange={(event) => updateSlideDraft('prompt', event.target.value)}
+            required
+            rows={5}
+            showCount
+            value={slideDraft.prompt}
+          />
+          <Textarea
+            helpText="참여자 입력란 아래에 보이는 작성 안내입니다."
+            label="작성 도움말"
+            maxLength={500}
+            onChange={(event) => updateSlideDraft('helper', event.target.value)}
+            rows={3}
+            showCount
+            value={slideDraft.helper}
+          />
+          <AutosaveStatus phase={slideAutosavePhase} savedAt={slideAutosavedAt} />
+        </div>
+      </Dialog>
       {renderToasts()}
     </OrganizerShell>
   )

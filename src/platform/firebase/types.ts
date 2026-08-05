@@ -106,9 +106,18 @@ export interface SaveSynthesisDraftRequest {
 
 export type FirebaseAuthoritativeCommand =
   | { type: 'SET_ACTIVE_SLIDE'; slideId: string }
+  | { type: 'SET_TIMER_DURATION'; durationSec: number }
   | { type: 'START_TIMER' | 'PAUSE_TIMER' | 'RESUME_TIMER' | 'RESET_TIMER' }
   | { type: 'SET_ANSWERS_REVEALED'; slideId: string; revealed: boolean }
   | { type: 'SET_COMMENTS_ENABLED'; slideId: string; enabled: boolean }
+  | {
+      type: 'UPDATE_SLIDE'
+      eyebrow: string
+      helper: string
+      prompt: string
+      slideId: string
+      title: string
+    }
   | { type: 'SUBMIT_ANSWER'; slideId: string }
   | { type: 'ADD_COMMENT'; answerId: string; body: string }
   | { type: 'UPDATE_COMMENT'; commentId: string; body: string }

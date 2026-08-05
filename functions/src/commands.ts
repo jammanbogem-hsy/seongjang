@@ -257,6 +257,106 @@ async function updateTimer(
   return success(value, notice)
 }
 
+async function setTimerDuration(
+  eventId: string,
+  command: UnknownRecord,
+  actor: EventActor,
+): Promise<CommandSuccess> {
+  const durationSec = requiredInteger(command, 'durationSec', 60, 10_800)
+  const { publicRootPath } = await eventAndPublicRoot(eventId)
+  const liveRef = db.doc(eventPath(eventId, 'live/state'))
+  const publicRootRef = db.doc(publicRootPath)
+  const value = await db.runTransaction(async (transaction) => {
+    const [live, publicRoot] = await Promise.all([
+      transaction.get(liveRef),
+      transaction.get(publicRootRef),
+    ])
+    if (!live.exists || !publicRoot.exists) {
+      throw new HttpsError('not-found', '타이머를 변경할 행사 정보를 찾을 수 없습니다.')
+    }
+    if (live.get('timerStatus') === 'running') {
+      throw new HttpsError('failed-precondition', '진행 중인 타이머를 일시정지한 뒤 시간을 변경해주세요.')
+    }
+    const slideId = safeDocumentId(String(live.get('activeSlideId') ?? ''), '슬라이드 ID')
+    const slideRef = db.doc(eventPath(eventId, `slides/${slideId}`))
+    const slide = await transaction.get(slideRef)
+    if (!slide.exists) throw new HttpsError('not-found', '현재 슬라이드를 찾을 수 없습니다.')
+
+    const now = Timestamp.now()
+    const eyebrow = String(slide.get('eyebrow') ?? '').replace(
+      /·\s*\d+\s*분\s*$/u,
+      `· ${Math.round(durationSec / 60)}분`,
+    )
+    const slidePatch = { durationSec, eyebrow }
+    const next = {
+      ...live.data(),
+      durationSec,
+      remainingSec: durationSec,
+      timerStatus: 'idle',
+      endsAt: null,
+      revision: revisionOf(live),
+      updatedAt: now,
+      updatedBy: actor.uid,
+    }
+    const join = publicRoot.get('join') as { slides?: Array<Record<string, unknown>> } | undefined
+    const slides = Array.isArray(join?.slides)
+      ? join.slides.map((item) => item.id === slideId ? { ...item, ...slidePatch } : item)
+      : []
+    if (!slides.some((item) => item.id === slideId)) {
+      throw new HttpsError('failed-precondition', '공개 참여 화면의 슬라이드 정보를 찾을 수 없습니다.')
+    }
+    transaction.set(liveRef, next)
+    transaction.update(slideRef, { ...slidePatch, updatedAt: now, updatedBy: actor.uid })
+    transaction.update(
+      publicRootRef,
+      'join.live', publicLiveProjection(next),
+      'join.slides', slides,
+      'join.updatedAt', now,
+    )
+    return { durationSec, remainingSec: durationSec, slideId, timerStatus: 'idle' }
+  })
+  return success(value, `현재 단계 타이머를 ${Math.round(durationSec / 60)}분으로 설정했습니다.`)
+}
+
+async function updateSlideContent(
+  eventId: string,
+  command: UnknownRecord,
+  actor: EventActor,
+): Promise<CommandSuccess> {
+  const input = commandInput(command, '슬라이드')
+  const slideId = safeDocumentId(requiredString(input, 'slideId', { max: 128 }), '슬라이드 ID')
+  const patch = {
+    eyebrow: requiredString(input, 'eyebrow', { max: 80, label: '단계 이름' }),
+    title: requiredString(input, 'title', { max: 160, label: '슬라이드 제목' }),
+    prompt: requiredString(input, 'prompt', { max: 800, label: '참여자 질문' }),
+    helper: optionalString(input, 'helper', 500),
+  }
+  const { publicRootPath } = await eventAndPublicRoot(eventId)
+  const slideRef = db.doc(eventPath(eventId, `slides/${slideId}`))
+  const publicRootRef = db.doc(publicRootPath)
+  const value = await db.runTransaction(async (transaction) => {
+    const [slide, publicRoot] = await Promise.all([
+      transaction.get(slideRef),
+      transaction.get(publicRootRef),
+    ])
+    if (!slide.exists || !publicRoot.exists) {
+      throw new HttpsError('not-found', '편집할 슬라이드 정보를 찾을 수 없습니다.')
+    }
+    const join = publicRoot.get('join') as { slides?: Array<Record<string, unknown>> } | undefined
+    const slides = Array.isArray(join?.slides)
+      ? join.slides.map((item) => item.id === slideId ? { ...item, ...patch } : item)
+      : []
+    if (!slides.some((item) => item.id === slideId)) {
+      throw new HttpsError('failed-precondition', '공개 참여 화면의 슬라이드 정보를 찾을 수 없습니다.')
+    }
+    const updatedAt = Timestamp.now()
+    transaction.update(slideRef, { ...patch, updatedAt, updatedBy: actor.uid })
+    transaction.update(publicRootRef, 'join.slides', slides, 'join.updatedAt', updatedAt)
+    return { id: slideId, ...patch }
+  })
+  return success(value, '슬라이드 내용을 모든 참여자 화면에 반영했습니다.')
+}
+
 async function setAnswerVisibilityAtomically(
   eventId: string,
   slideId: string,
@@ -1007,7 +1107,9 @@ const organizerCommands = new Set([
   'SET_COMMENTS_ENABLED',
   'SET_EXHIBITION_PUBLISHED',
   'SET_PARTICIPANT_STATUS',
+  'SET_TIMER_DURATION',
   'START_TIMER',
+  'UPDATE_SLIDE',
   'UPDATE_SYNTHESIS',
 ])
 const ownerCommands = new Set(['INVITE_ADMIN', 'REVOKE_ADMIN'])
@@ -1051,6 +1153,9 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
       case 'SET_ACTIVE_SLIDE':
         result = await setActiveSlide(eventId, command, actor)
         break
+      case 'SET_TIMER_DURATION':
+        result = await setTimerDuration(eventId, command, actor)
+        break
       case 'START_TIMER':
       case 'PAUSE_TIMER':
       case 'RESUME_TIMER':
@@ -1060,6 +1165,9 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
       case 'SET_ANSWERS_REVEALED':
       case 'SET_COMMENTS_ENABLED':
         result = await updateSlideGate(eventId, command, type, actor)
+        break
+      case 'UPDATE_SLIDE':
+        result = await updateSlideContent(eventId, command, actor)
         break
       case 'SAVE_ANSWER':
       case 'SUBMIT_ANSWER':

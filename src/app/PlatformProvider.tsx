@@ -197,6 +197,8 @@ function toFirebaseCommand(
       const slide = state.slides[command.slideIndex]
       return slide ? { type: 'SET_ACTIVE_SLIDE', slideId: slide.id } : null
     }
+    case 'SET_TIMER_DURATION':
+      return { type: command.type, durationSec: command.durationSec }
     case 'START_TIMER':
     case 'PAUSE_TIMER':
     case 'RESUME_TIMER':
@@ -206,6 +208,8 @@ function toFirebaseCommand(
       return { type: command.type, slideId: command.slideId, revealed: command.revealed }
     case 'SET_COMMENTS_ENABLED':
       return { type: command.type, slideId: command.slideId, enabled: command.enabled }
+    case 'UPDATE_SLIDE':
+      return { type: command.type, ...command.input }
     case 'ADD_COMMENT':
       return { type: command.type, answerId: command.input.answerId, body: command.input.body }
     case 'UPDATE_COMMENT':

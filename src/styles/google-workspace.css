@@ -776,6 +776,20 @@ select:focus-visible,
   color: var(--on-surface-variant);
 }
 
+.stage-kicker__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stage-edit-button {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+}
+
 .stage-card h1,
 .stage-card h2 {
   max-width: 680px;
@@ -783,6 +797,46 @@ select:focus-visible,
   font-size: clamp(34px, 4.6vw, 56px);
   font-weight: 600;
   letter-spacing: -.045em;
+}
+
+.timer-settings {
+  display: grid;
+  gap: 10px;
+}
+
+.timer-settings__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.timer-duration-field {
+  min-width: 0;
+}
+
+.timer-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.timer-presets .ui-button {
+  min-width: 0;
+  padding-inline: 8px;
+}
+
+.timer-settings > p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.slide-editor-form {
+  gap: 18px;
+}
+
+.slide-editor-form .notice {
+  margin: 0;
 }
 
 .timer-display {
