@@ -8,21 +8,21 @@ GlobalWorkerOptions.workerSrc = pdfWorker
 const PDF_URL = '/ebook/lecture.pdf?v=20260805-4'
 
 const PATTERN_CAT_ARTWORKS = [
-  '/assets/illustrations/cat-exhibition.png',
-  '/assets/mascots/cat-focus.png',
-  '/assets/mascots/cat-celebrate.png',
-  '/assets/illustrations/cat-lobby.png',
-  '/assets/mascots/cat-autosave.png',
-  '/assets/mascots/cat-review.png',
-  '/assets/illustrations/cat-ideation.png',
-  '/assets/mascots/cat-sync.png',
-  '/assets/mascots/cat-comment.png',
-  '/assets/illustrations/cat-timer.png',
-  '/assets/mascots/cat-saved.png',
-  '/assets/illustrations/cat-submission.png',
-  '/assets/mascots/cat-empty.png',
-  '/assets/mascots/cat-deadline.png',
-  '/assets/mascots/cat-welcome.png',
+  '/assets/illustrations/cat-exhibition.webp',
+  '/assets/mascots/cat-focus.webp',
+  '/assets/mascots/cat-celebrate.webp',
+  '/assets/illustrations/cat-lobby.webp',
+  '/assets/mascots/cat-autosave.webp',
+  '/assets/mascots/cat-review.webp',
+  '/assets/illustrations/cat-ideation.webp',
+  '/assets/mascots/cat-sync.webp',
+  '/assets/mascots/cat-comment.webp',
+  '/assets/illustrations/cat-timer.webp',
+  '/assets/mascots/cat-saved.webp',
+  '/assets/illustrations/cat-submission.webp',
+  '/assets/mascots/cat-empty.webp',
+  '/assets/mascots/cat-deadline.webp',
+  '/assets/mascots/cat-welcome.webp',
 ]
 
 const PATTERN_CATS = [...PATTERN_CAT_ARTWORKS, ...[...PATTERN_CAT_ARTWORKS].reverse()]
@@ -107,7 +107,7 @@ export function EbookPage() {
 
   useEffect(() => {
     const loaderCat = new Image()
-    loaderCat.src = '/assets/retro/retro-cat-recharging-break.png'
+    loaderCat.src = '/assets/retro/retro-cat-recharging-break.webp'
     void loaderCat.decode().catch(() => undefined)
   }, [])
 
@@ -318,7 +318,7 @@ export function EbookPage() {
               <div className="ebook-loader" role="status">
                 <div className="ebook-loader-orbit" aria-hidden="true">
                   <span />
-                  <img alt="" src="/assets/retro/retro-cat-recharging-break.png" />
+                  <img alt="" src="/assets/retro/retro-cat-recharging-break.webp" />
                 </div>
                 <strong>{loadingLabel}</strong>
                 <span>잠깐만 기다려 주세요</span>

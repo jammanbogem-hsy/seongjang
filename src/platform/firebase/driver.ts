@@ -2,6 +2,7 @@ import type { User } from 'firebase/auth'
 import {
   collection,
   doc,
+  limit as queryLimit,
   onSnapshot,
   orderBy,
   query,
@@ -48,6 +49,7 @@ export interface FirebaseOrderConstraint {
 }
 
 export interface FirebaseCollectionSpec {
+  limit?: number
   path: string
   order?: FirebaseOrderConstraint[]
   where?: FirebaseWhereConstraint[]
@@ -99,6 +101,9 @@ export function createFirebaseSdkDriver(
       spec.order?.forEach((constraint) => {
         constraints.push(orderBy(constraint.field, constraint.direction))
       })
+      if (spec.limit && Number.isInteger(spec.limit) && spec.limit > 0) {
+        constraints.push(queryLimit(spec.limit))
+      }
       const source = query(collection(services.db, spec.path), ...constraints)
       return onSnapshot(
         source,

@@ -4,6 +4,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import {
   bootstrapOwnerEmail,
   EVENT_ID,
+  FUNCTION_COST_GUARDRAILS,
   MAX_PARTICIPANTS,
   participantSecretKey,
   PUBLIC_SLUG,
@@ -483,8 +484,10 @@ export async function seedVibe26Data({
 
 export const bootstrapVibe26 = onCall(
   {
+    ...FUNCTION_COST_GUARDRAILS,
     region: REGION,
     enforceAppCheck: true,
+    maxInstances: 1,
     secrets: [participantSecretKey],
     timeoutSeconds: 120,
   },

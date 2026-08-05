@@ -50,6 +50,7 @@ npm --prefix functions run check
 - Firebase Authentication: Google 주최자 계정, 일회용 이메일 관리자 초대, 익명 사전 인증 후 닉네임·PIN 기반 참여자 custom token
 - Cloud Firestore: 서울 `asia-northeast3`, 멀티 탭 영속 캐시, 실시간 listener
 - Cloud Functions v2: 참여/재입장, 진행 제어, 제출, 댓글, 비공개 검토, 관리자 초대, 발행, PIN 감사 조회
+- 비용 가드: Functions 최대 10 instance·40 concurrent request, 유한 listener, 화면별 공개 shard 로딩
 - Firestore Security Rules: 기본 거부, 행사 멤버 역할과 참여자 소유 초안에 따른 최소 권한
 - Firebase App Check: reCAPTCHA Enterprise 권장 위험 기준 `0.5`로 Firestore와 callable Functions 요청 검증
 - HMAC 익명화된 인증 세션·기기·IP 계층형 입장 제한과 Firestore TTL 자동 정리
@@ -72,6 +73,8 @@ firebase deploy --only firestore:rules,firestore:indexes,functions,hosting
 ```
 
 Functions의 공개 설정은 `functions/.env.vibecoding-a3ada`, PIN 암호화 키는 Firebase Secret Manager의 `PARTICIPANT_SECRET_KEY`에서 관리합니다. 비밀값은 저장소에 포함하지 않습니다.
+
+운영 무료 구간, 예산 알림, 과금 위험과 행사 전후 확인사항은 [Firebase 운영 비용 가드](docs/FIREBASE_COSTS.md)에 정리했습니다.
 
 ## 입력된 행사 데이터
 

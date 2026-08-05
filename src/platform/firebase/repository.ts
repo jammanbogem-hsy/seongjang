@@ -62,6 +62,32 @@ type PublicShardKey = 'answers' | 'comments' | 'projects' | 'stages' | 'themes'
 
 const PUBLIC_SHARD_KEYS: PublicShardKey[] = ['stages', 'answers', 'comments', 'projects', 'themes']
 
+// These limits mirror the product's server-enforced 100-person event model.
+// They keep a malformed collection or replayed client from turning one screen
+// subscription into an unbounded Firestore read bill.
+const LISTENER_LIMITS = {
+  adminInvites: 50,
+  answerDrafts: 400,
+  answers: 400,
+  comments: 1_200,
+  participants: 100,
+  projectDrafts: 100,
+  projects: 100,
+  reviewMessages: 200,
+  reviewThreads: 1_000,
+  slides: 12,
+  submissions: 100,
+  themes: 32,
+} as const
+
+function publicShardLimit(key: PublicShardKey): number {
+  if (key === 'stages') return LISTENER_LIMITS.slides
+  if (key === 'answers') return LISTENER_LIMITS.answers
+  if (key === 'comments') return LISTENER_LIMITS.comments
+  if (key === 'projects') return LISTENER_LIMITS.projects
+  return LISTENER_LIMITS.themes
+}
+
 function emptyBundle(): FirebaseEntityBundle {
   return {
     adminInvites: [],
@@ -201,7 +227,7 @@ function buildPublishedSnapshot(
         ? data.tags.filter((value): value is string => typeof value === 'string')
         : [],
       retrospective: asText(data.retrospective),
-      coverImage: asText(data.coverImage, '/assets/illustrations/cat-submission.png'),
+      coverImage: asText(data.coverImage, '/assets/illustrations/cat-submission.webp'),
       submittedAt: timestampIso(data.submittedAt ?? revisionData.publishedAt),
     }
   })
@@ -280,6 +306,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
   private readonly confirmedDraftRevisions = new Map<string, number>()
   private readonly driver: FirebaseBackendDriver
   private readonly eventId: string
+  private readonly includePublishedSnapshot: boolean
   private readonly participantId?: string
   private readonly publicSlug: string
   private readonly role: CreateFirebaseBackendOptions['role']
@@ -291,6 +318,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
     }
     this.driver = options.driver ?? createFirebaseSdkDriver()
     this.eventId = options.eventId
+    this.includePublishedSnapshot = options.includePublishedSnapshot ?? true
     this.participantId = options.participantId
     this.publicSlug = options.publicSlug ?? options.eventId
     this.role = options.role
@@ -505,7 +533,10 @@ export class FirebaseEventBackend implements FirebaseBackend {
         return
       }
       publicProjectUnsubscribe = this.driver.watchCollection(
-        { path: `${publicPath}/revisions/${revision}/projects` },
+        {
+          limit: LISTENER_LIMITS.projects,
+          path: `${publicPath}/revisions/${revision}/projects`,
+        },
         (snapshot) => {
           publicShardDocuments.projects = snapshot.documents
           publicShardsReady.add('projects')
@@ -535,7 +566,10 @@ export class FirebaseEventBackend implements FirebaseBackend {
       ))
       PUBLIC_SHARD_KEYS.filter((key) => key !== 'projects').forEach((key) => {
         publicRevisionUnsubscribers.push(this.driver.watchCollection(
-          { path: `${publicPath}/revisions/${revision}/${key}` },
+          {
+            limit: publicShardLimit(key),
+            path: `${publicPath}/revisions/${revision}/${key}`,
+          },
           (snapshot) => {
             publicShardDocuments[key] = snapshot.documents
             publicShardsReady.add(key)
@@ -606,6 +640,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
         if (messageUnsubscribers.has(thread.id)) return
         const unsubscribe = this.driver.watchCollection(
           {
+            limit: LISTENER_LIMITS.reviewMessages,
             path: `events/${this.eventId}/reviewThreads/${thread.id}/messages`,
             order: [{ field: 'createdAt', direction: 'asc' }],
           },
@@ -626,6 +661,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
         'reviewThreads',
         `events/${this.eventId}/reviewThreads`,
         {
+          limit: LISTENER_LIMITS.reviewThreads,
           path: `events/${this.eventId}/reviewThreads`,
           where: ownerParticipantId
             ? [{ field: 'ownerParticipantId', op: '==', value: ownerParticipantId }]
@@ -640,51 +676,60 @@ export class FirebaseEventBackend implements FirebaseBackend {
     }
 
     const publicPath = `publicEvents/${this.publicSlug}`
-    unsubscribers.push(this.driver.watchDocument(publicPath, (snapshot) => {
-      rememberMetadata('publicEvent', snapshot)
-      const publicDocument = snapshot.document
-      publicRootDocument = publicDocument
-      if (this.role === 'public') {
-        const data = publicDocument?.data ?? {}
-        const join = data.join && typeof data.join === 'object'
-          ? data.join as Record<string, unknown>
-          : data
-        bundle.event = publicDocument
-          ? { ...publicDocument, data: { ...data, ...join } }
-          : null
-        ready.add('event')
-        const slideValues = Array.isArray(join.slides) ? join.slides : []
-        bundle.slides = slideValues.map((value, index) => {
-          const slide = value && typeof value === 'object' ? value as Record<string, unknown> : {}
-          const id = typeof slide.id === 'string' ? slide.id : `slide-${index + 1}`
-          return { id, data: slide }
-        })
-        const live = join.live && typeof join.live === 'object'
-          ? join.live as Record<string, unknown>
-          : null
-        bundle.live = live ? { id: 'state', data: live } : null
-      }
-
-      // The join projection remains small and live. Published data is assembled
-      // from immutable revision shards so events can grow without hitting the
-      // Firestore 1 MiB document limit.
-      bundle.publishedSnapshot = publicDocument
-      const pointer = Number(
-        publicDocument?.data.currentRevision ?? publicDocument?.data.latestRevision ?? 0,
-      )
-      if (Number.isInteger(pointer) && pointer > 0 && pointer !== publicRevision) {
-        publicRevision = pointer
-        watchPublicRevision(publicPath, pointer)
-      } else {
-        const nextProjectsEnabled = publicDocument?.data.exhibitionPublished === true
-        if (pointer > 0 && nextProjectsEnabled !== publicProjectsEnabled) {
-          watchPublicProjects(publicPath, pointer, nextProjectsEnabled)
+    if (this.role === 'public' || this.includePublishedSnapshot) {
+      unsubscribers.push(this.driver.watchDocument(publicPath, (snapshot) => {
+        rememberMetadata('publicEvent', snapshot)
+        const publicDocument = snapshot.document
+        publicRootDocument = publicDocument
+        if (this.role === 'public') {
+          const data = publicDocument?.data ?? {}
+          const join = data.join && typeof data.join === 'object'
+            ? data.join as Record<string, unknown>
+            : data
+          bundle.event = publicDocument
+            ? { ...publicDocument, data: { ...data, ...join } }
+            : null
+          ready.add('event')
+          const slideValues = Array.isArray(join.slides) ? join.slides : []
+          bundle.slides = slideValues.map((value, index) => {
+            const slide = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+            const id = typeof slide.id === 'string' ? slide.id : `slide-${index + 1}`
+            return { id, data: slide }
+          })
+          const live = join.live && typeof join.live === 'object'
+            ? join.live as Record<string, unknown>
+            : null
+          bundle.live = live ? { id: 'state', data: live } : null
         }
-        ready.add('publishedSnapshot')
-        hydratePublicRevision()
-      }
-      emit()
-    }, onError))
+
+        if (!this.includePublishedSnapshot) {
+          bundle.publishedSnapshot = null
+          ready.add('publishedSnapshot')
+          emit()
+          return
+        }
+
+        // The join projection remains small and live. Published data is assembled
+        // from immutable revision shards so events can grow without hitting the
+        // Firestore 1 MiB document limit.
+        bundle.publishedSnapshot = publicDocument
+        const pointer = Number(
+          publicDocument?.data.currentRevision ?? publicDocument?.data.latestRevision ?? 0,
+        )
+        if (Number.isInteger(pointer) && pointer > 0 && pointer !== publicRevision) {
+          publicRevision = pointer
+          watchPublicRevision(publicPath, pointer)
+        } else {
+          const nextProjectsEnabled = publicDocument?.data.exhibitionPublished === true
+          if (pointer > 0 && nextProjectsEnabled !== publicProjectsEnabled) {
+            watchPublicProjects(publicPath, pointer, nextProjectsEnabled)
+          }
+          ready.add('publishedSnapshot')
+          hydratePublicRevision()
+        }
+        emit()
+      }, onError))
+    }
     if (this.role === 'public') {
       return () => {
         active = false
@@ -698,29 +743,35 @@ export class FirebaseEventBackend implements FirebaseBackend {
     watchDocument('event', eventPath)
     watchDocument('live', `${eventPath}/live/state`)
     watchCollection('slides', `${eventPath}/slides`, {
+      limit: LISTENER_LIMITS.slides,
       path: `${eventPath}/slides`,
       order: [{ field: 'order', direction: 'asc' }],
     })
 
     if (this.role === 'organizer') {
-      watchCollection('participants', `${eventPath}/participants`)
-      watchCollection('adminInvites', `${eventPath}/adminInvites`)
-      watchCollection('answerDrafts', `${eventPath}/answerDrafts`)
-      watchCollection('answers', `${eventPath}/answers`)
-      watchCollection('comments', `${eventPath}/discussionComments`)
-      watchCollection('projectDrafts', `${eventPath}/projectDrafts`)
-      watchCollection('submissions', `${eventPath}/submissions`)
-      watchCollection('themes', `${eventPath}/themes`)
+      watchCollection('participants', `${eventPath}/participants`, { limit: LISTENER_LIMITS.participants, path: `${eventPath}/participants` })
+      watchCollection('adminInvites', `${eventPath}/adminInvites`, { limit: LISTENER_LIMITS.adminInvites, path: `${eventPath}/adminInvites` })
+      watchCollection('answerDrafts', `${eventPath}/answerDrafts`, { limit: LISTENER_LIMITS.answerDrafts, path: `${eventPath}/answerDrafts` })
+      watchCollection('answers', `${eventPath}/answers`, { limit: LISTENER_LIMITS.answers, path: `${eventPath}/answers` })
+      watchCollection('comments', `${eventPath}/discussionComments`, { limit: LISTENER_LIMITS.comments, path: `${eventPath}/discussionComments` })
+      watchCollection('projectDrafts', `${eventPath}/projectDrafts`, { limit: LISTENER_LIMITS.projectDrafts, path: `${eventPath}/projectDrafts` })
+      watchCollection('submissions', `${eventPath}/submissions`, { limit: LISTENER_LIMITS.submissions, path: `${eventPath}/submissions` })
+      watchCollection('themes', `${eventPath}/themes`, { limit: LISTENER_LIMITS.themes, path: `${eventPath}/themes` })
       watchDocument('synthesis', `${eventPath}/synthesis/current`)
       watchReviewThreads()
     } else {
       const participantId = this.requireParticipant()
-      watchCollection('participants', `${eventPath}/participantDirectory`)
+      watchCollection('participants', `${eventPath}/participantDirectory`, {
+        limit: LISTENER_LIMITS.participants,
+        path: `${eventPath}/participantDirectory`,
+      })
       watchCollection('answerDrafts', `${eventPath}/answerDrafts`, {
+        limit: 4,
         path: `${eventPath}/answerDrafts`,
         where: [{ field: 'ownerParticipantId', op: '==', value: participantId }],
       })
       watchCollection('answers', `${eventPath}/answers`, {
+        limit: LISTENER_LIMITS.answers,
         path: `${eventPath}/answers`,
         where: [{ field: 'visibility', op: '==', value: 'revealed' }],
       }, (documents) => {
@@ -728,6 +779,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
         bundle.answers = this.mergeDocuments(revealedAnswers, ownAnswers)
       })
       watchCollection('answers', `${eventPath}/answers`, {
+        limit: 4,
         path: `${eventPath}/answers`,
         where: [{ field: 'ownerParticipantId', op: '==', value: participantId }],
       }, (documents) => {
@@ -735,15 +787,18 @@ export class FirebaseEventBackend implements FirebaseBackend {
         bundle.answers = this.mergeDocuments(revealedAnswers, ownAnswers)
       })
       watchCollection('comments', `${eventPath}/discussionComments`, {
+        limit: LISTENER_LIMITS.comments,
         path: `${eventPath}/discussionComments`,
         where: [{ field: 'visibility', op: '==', value: 'event' }],
       })
       watchDocument('synthesis', `${eventPath}/synthesis/current`)
       watchCollection('projectDrafts', `${eventPath}/projectDrafts`, {
+        limit: 1,
         path: `${eventPath}/projectDrafts`,
         where: [{ field: 'ownerParticipantId', op: '==', value: participantId }],
       })
       watchCollection('submissions', `${eventPath}/submissions`, {
+        limit: 1,
         path: `${eventPath}/submissions`,
         where: [{ field: 'ownerParticipantId', op: '==', value: participantId }],
       })

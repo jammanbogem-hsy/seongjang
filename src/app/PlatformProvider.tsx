@@ -41,6 +41,7 @@ import {
   type PlatformPersistence,
 } from '../platform/persistence'
 import type { AutosavePhase } from '../platform/useAutosave'
+import { useLocation } from './router'
 
 const FIREBASE_EVENT_ID = 'room-vibe26'
 const FIREBASE_PUBLIC_SLUG = 'vibecoding-2026'
@@ -226,6 +227,7 @@ function toFirebaseCommand(
 }
 
 function FirebasePlatformProvider({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation()
   const seedRef = useRef(createSeedState())
   const [state, setState] = useState(seedRef.current)
   const stateRef = useRef(state)
@@ -283,12 +285,19 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       ? { role: 'participant' as const, participantId: membership.participantId ?? membership.uid }
       : { role: 'public' as const, participantId: undefined }
 
+  const includePublishedSnapshot = pathname.startsWith('/dashboards/')
+    || pathname.startsWith('/embed/')
+    || pathname.startsWith('/exhibitions/')
+    || pathname.endsWith('/synthesis')
+    || pathname.endsWith('/portability')
+
   useEffect(() => {
     if (!authReady) return
     setBackendPhase('loading')
     setBackendError(null)
     const backend = createFirebaseEventBackend({
       eventId: FIREBASE_EVENT_ID,
+      includePublishedSnapshot,
       participantId: projection.participantId,
       publicSlug: FIREBASE_PUBLIC_SLUG,
       role: projection.role,
@@ -307,7 +316,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       backendRef.current = null
       unsubscribe()
     }
-  }, [authReady, projection.participantId, projection.role])
+  }, [authReady, includePublishedSnapshot, projection.participantId, projection.role])
 
   useEffect(() => {
     if (state.live.timer.status !== 'running') return

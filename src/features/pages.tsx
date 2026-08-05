@@ -204,7 +204,7 @@ export function LandingPage() {
             </div>
           </div>
           <div className="hero-art" aria-label="해커톤의 흐름을 안내하는 고양이 삽화">
-            <img alt="노트북과 데이터를 살펴보는 레트로 고양이" src="/assets/retro/retro-cat-user-flow-ux-ui.png" />
+            <img alt="노트북과 데이터를 살펴보는 레트로 고양이" src="/assets/retro/retro-cat-user-flow-ux-ui.webp" />
             <div className="floating-note">24명의 생각 → 하나의 공개 대시보드</div>
           </div>
         </section>
@@ -248,7 +248,7 @@ export function LandingPage() {
               <Chip icon="shield" tone="success">공개 데이터 분리</Chip>
             </div>
           </div>
-          <img alt="수집된 데이터를 살펴보는 고양이" src="/assets/retro/retro-cat-class-data-feedback.png" />
+          <img alt="수집된 데이터를 살펴보는 고양이" src="/assets/retro/retro-cat-class-data-feedback.webp" />
         </section>
 
       </main>
@@ -648,6 +648,11 @@ export function ParticipantLivePage() {
                     이 기기의 초안보다 Firebase에 더 최신 답변이 있어 자동저장을 멈췄습니다.
                     <Button
                       onClick={() => {
+                        // This content may already have been acknowledged at an
+                        // older revision. A deliberate rebase must retry it
+                        // against the newly accepted server revision instead of
+                        // treating the matching text as already persisted.
+                        delete savedAnswerDraftsRef.current[currentSlide.id]
                         setAnswerDraftBases((current) => ({
                           ...current,
                           [currentSlide.id]: ownAnswer?.updatedAt ?? '',
@@ -877,7 +882,7 @@ export function SubmissionPage() {
           participantId: currentParticipant.id,
           ...form,
           tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
-          coverImage: '/assets/illustrations/cat-submission.png',
+          coverImage: '/assets/illustrations/cat-submission.webp',
           submit: false,
         },
       })).ok
@@ -921,7 +926,7 @@ export function SubmissionPage() {
           participantId: currentParticipant.id,
           ...form,
           tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
-          coverImage: '/assets/illustrations/cat-submission.png',
+          coverImage: '/assets/illustrations/cat-submission.webp',
           submit,
         },
       }),
@@ -1916,7 +1921,7 @@ export function ExhibitionPage() {
             <p>모든 결과물은 개인 제출입니다. 단계별 기록과 제작 회고까지 다음 행사에 이어질 수 있는 형태로 남았습니다.</p>
             <div className="chip-row"><Chip icon="person" tone="primary">개인 작품 {projects.length}개</Chip><Chip icon="public" tone="success">전시 공개 중</Chip></div>
           </div>
-          <img alt="완성된 작품 전시를 안내하는 고양이" src="/assets/retro/retro-cat-collaboration.png" />
+          <img alt="완성된 작품 전시를 안내하는 고양이" src="/assets/retro/retro-cat-collaboration.webp" />
         </section>
         <section className="section">
           <SectionHeader description="카드를 열어 데모, GitHub 링크와 제작자의 회고를 확인하세요." eyebrow="GALLERY" title="오늘 완성된 작품" />

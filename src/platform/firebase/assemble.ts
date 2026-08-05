@@ -297,7 +297,7 @@ function submissionFromData(record: FirebaseDocumentRecord, status: Submission['
   const data = object(record.data.submittedSnapshot ?? record.data)
   return {
     id: record.id,
-    coverImage: text(data.coverImage, '/assets/illustrations/cat-submission.png'),
+    coverImage: text(data.coverImage, '/assets/illustrations/cat-submission.webp'),
     createdAt: iso(data.createdAt ?? data.updatedAt),
     demoUrl: text(data.demoUrl),
     description: text(data.description),
@@ -340,7 +340,7 @@ function parseSubmissions(
   const submitted = records.map((record) => submissionFromData(record, 'submitted'))
   const draftSubmissions = drafts.map((draft): Submission => ({
     id: `draft-${draft.participantId}`,
-    coverImage: '/assets/illustrations/cat-submission.png',
+    coverImage: '/assets/illustrations/cat-submission.webp',
     createdAt: draft.updatedAt,
     demoUrl: draft.demoUrl,
     description: draft.description,

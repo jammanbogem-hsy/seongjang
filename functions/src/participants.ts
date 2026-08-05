@@ -3,6 +3,7 @@ import { Timestamp } from 'firebase-admin/firestore'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import { appendAuditLog, requireOrganizer } from './lib/authz.js'
 import {
+  FUNCTION_COST_GUARDRAILS,
   MAX_PARTICIPANTS,
   participantSecretKey,
   REGION,
@@ -66,7 +67,13 @@ function privateLimitId(secret: string, ...parts: string[]): string {
 }
 
 export const joinOrReenterParticipant = onCall(
-  { region: REGION, enforceAppCheck: true, secrets: [participantSecretKey] },
+  {
+    ...FUNCTION_COST_GUARDRAILS,
+    region: REGION,
+    enforceAppCheck: true,
+    secrets: [participantSecretKey],
+    timeoutSeconds: 30,
+  },
   async (request) => {
     const input = asRecord(request.data)
     if (!request.auth?.uid) {
@@ -368,7 +375,14 @@ export const joinOrReenterParticipant = onCall(
 )
 
 export const revealParticipantPin = onCall(
-  { region: REGION, enforceAppCheck: true, secrets: [participantSecretKey] },
+  {
+    ...FUNCTION_COST_GUARDRAILS,
+    region: REGION,
+    enforceAppCheck: true,
+    maxInstances: 5,
+    secrets: [participantSecretKey],
+    timeoutSeconds: 30,
+  },
   async (request) => {
     const input = asRecord(request.data)
     const eventId = safeDocumentId(requiredString(input, 'eventId', { max: 128 }), '행사 ID')

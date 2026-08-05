@@ -67,7 +67,7 @@ const slides: Slide[] = [
     prompt: '일상에서 자주 반복되지만 아직 매끄럽지 않은 순간을 한 장면으로 적어주세요.',
     helper: '누가, 언제, 어디에서 어떤 불편을 겪는지 구체적으로 써보세요.',
     durationSec: 720,
-    illustration: '/assets/illustrations/cat-ideation.png',
+    illustration: '/assets/illustrations/cat-ideation.webp',
   },
   {
     id: 'stage-focus',
@@ -77,7 +77,7 @@ const slides: Slide[] = [
     prompt: '한 사람을 떠올리고 그 사람이 지금 하려는 일과 막히는 지점을 적어주세요.',
     helper: '모두를 위한 답보다 첫 번째 사용자의 생생한 맥락에 집중하세요.',
     durationSec: 600,
-    illustration: '/assets/illustrations/cat-lobby.png',
+    illustration: '/assets/illustrations/cat-lobby.webp',
   },
   {
     id: 'stage-build',
@@ -87,7 +87,7 @@ const slides: Slide[] = [
     prompt: '사용자가 무엇을 입력하고, 서비스가 무엇을 돌려주며, 어떤 변화가 생기는지 적어주세요.',
     helper: '“사용자가 ___하면, 서비스는 ___해서, ___할 수 있다” 형식을 활용해보세요.',
     durationSec: 1_080,
-    illustration: '/assets/illustrations/cat-timer.png',
+    illustration: '/assets/illustrations/cat-timer.webp',
   },
   {
     id: 'stage-reflect',
@@ -97,7 +97,7 @@ const slides: Slide[] = [
     prompt: '오늘 만든 것에서 가장 먼저 확인할 가설과 바로 이어갈 행동을 적어주세요.',
     helper: '작고 측정 가능하며 내일 시작할 수 있는 행동이면 충분합니다.',
     durationSec: 480,
-    illustration: '/assets/illustrations/cat-submission.png',
+    illustration: '/assets/illustrations/cat-submission.webp',
   },
 ]
 
@@ -231,7 +231,7 @@ const submissionSeeds = [
     githubUrl: 'https://github.com/example/flowy',
     tags: ['진행', '온보딩', '아카이빙'],
     retrospective: '기능보다 다음 행동이 명확한 질문 한 줄이 더 중요하다는 것을 배웠습니다.',
-    coverImage: '/assets/illustrations/cat-lobby.png',
+    coverImage: '/assets/illustrations/cat-lobby.webp',
   },
   {
     participantId: 'participant-05',
@@ -242,7 +242,7 @@ const submissionSeeds = [
     githubUrl: '',
     tags: ['포용성', '브레인스토밍'],
     retrospective: '익명성과 맥락 사이의 균형을 참가자가 직접 선택하도록 설계하고 싶습니다.',
-    coverImage: '/assets/illustrations/cat-ideation.png',
+    coverImage: '/assets/illustrations/cat-ideation.webp',
   },
   {
     participantId: 'participant-08',
@@ -253,7 +253,7 @@ const submissionSeeds = [
     githubUrl: 'https://github.com/example/readme-gardener',
     tags: ['README', '개인제출', '전시'],
     retrospective: '완성 후 문서를 쓰게 하지 말고 만드는 과정에서 자연스럽게 모아야 했습니다.',
-    coverImage: '/assets/illustrations/cat-submission.png',
+    coverImage: '/assets/illustrations/cat-submission.webp',
   },
   {
     participantId: 'participant-11',
@@ -264,7 +264,7 @@ const submissionSeeds = [
     githubUrl: 'https://github.com/example/same-page',
     tags: ['실시간', '슬라이드', '타이머'],
     retrospective: '시간 자체보다 시작·멈춤·재개의 기준을 한 곳에 두는 것이 핵심이었습니다.',
-    coverImage: '/assets/illustrations/cat-timer.png',
+    coverImage: '/assets/illustrations/cat-timer.webp',
   },
   {
     participantId: 'participant-14',
@@ -275,7 +275,7 @@ const submissionSeeds = [
     githubUrl: 'https://github.com/example/event-relay',
     tags: ['데이터', '내보내기', '재사용'],
     retrospective: '내보내기 형식이 여러 개여도 공개 원본은 하나여야 신뢰할 수 있습니다.',
-    coverImage: '/assets/illustrations/cat-exhibition.png',
+    coverImage: '/assets/illustrations/cat-exhibition.webp',
   },
   {
     participantId: 'participant-17',
@@ -286,7 +286,7 @@ const submissionSeeds = [
     githubUrl: '',
     tags: ['운영', '대시보드', '100명'],
     retrospective: '숫자를 많이 보여주기보다 지금 도움이 필요한 사람을 드러내는 데 집중했습니다.',
-    coverImage: '/assets/illustrations/cat-exhibition.png',
+    coverImage: '/assets/illustrations/cat-exhibition.webp',
   },
 ] as const
 

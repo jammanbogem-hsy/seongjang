@@ -582,7 +582,7 @@ export function executePlatformCommand(
         githubUrl: input.githubUrl?.trim() ?? '',
         tags: (input.tags ?? []).map((tag) => tag.trim()).filter(Boolean).slice(0, 6),
         retrospective: input.retrospective.trim(),
-        coverImage: input.coverImage?.trim() || '/assets/illustrations/cat-submission.png',
+        coverImage: input.coverImage?.trim() || '/assets/illustrations/cat-submission.webp',
         status,
         createdAt: existing?.createdAt ?? nowIso,
         updatedAt: nowIso,

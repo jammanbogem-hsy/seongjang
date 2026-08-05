@@ -234,4 +234,39 @@ describe('participant answer draft state', () => {
     )
     expect(savedAfterAccept?.content).toBe('첫 기기에서 아직 저장하지 않은 답변')
   })
+
+  it('retries previously saved text after the user explicitly rebases it', async () => {
+    vi.useFakeTimers()
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <ParticipantLivePage />
+          <RemoteAnswerHarness />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    fireEvent.change(screen.getByLabelText('나의 개인 답변'), {
+      target: { value: '첫 기기에서 이미 한 번 저장한 답변' },
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500)
+    })
+    fireEvent.click(screen.getByRole('button', { name: '다른 기기 저장' }))
+    expect(screen.getByText(/Firebase에 더 최신 답변/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '내 초안으로 계속 편집' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500)
+    })
+
+    const persisted = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    const saved = persisted.answers.find(
+      (answer: { participantId: string; slideId: string }) => (
+        answer.participantId === persisted.participants[0].id
+        && answer.slideId === persisted.slides[3].id
+      ),
+    )
+    expect(saved?.content).toBe('첫 기기에서 이미 한 번 저장한 답변')
+  })
 })

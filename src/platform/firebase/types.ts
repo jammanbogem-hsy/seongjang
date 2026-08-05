@@ -68,6 +68,7 @@ export interface FirebaseEntityBundle {
 export interface CreateFirebaseBackendOptions {
   driver?: FirebaseBackendDriver
   eventId: string
+  includePublishedSnapshot?: boolean
   participantId?: string
   publicSlug?: string
   role: FirebaseViewRole

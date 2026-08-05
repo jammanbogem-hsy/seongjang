@@ -62,6 +62,15 @@
         ]
       },
       {
+        "source": "/ebook/lecture.pdf",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public,max-age=31536000,immutable"
+          }
+        ]
+      },
+      {
         "source": "**/*.@(js|css|png|jpg|jpeg|webp|svg|woff2)",
         "headers": [
           {

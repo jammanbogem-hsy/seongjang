@@ -14,6 +14,7 @@ import { assembleFirebaseSnapshot } from './firebase/assemble'
 
 class FakeDriver implements FirebaseBackendDriver {
   collectionListeners = new Map<string, (snapshot: FirebaseCollectionSnapshotRecord) => void>()
+  collectionSpecs: FirebaseCollectionSpec[] = []
   documentListeners = new Map<string, (snapshot: FirebaseDocumentSnapshotRecord) => void>()
   invocations: Array<{ name: string; payload: unknown }> = []
   writes: Array<{ data: Record<string, unknown>; path: string }> = []
@@ -34,6 +35,7 @@ class FakeDriver implements FirebaseBackendDriver {
     spec: FirebaseCollectionSpec,
     next: (snapshot: FirebaseCollectionSnapshotRecord) => void,
   ) => {
+    this.collectionSpecs.push(spec)
     const key = `${spec.path}?${JSON.stringify(spec.where ?? [])}`
     this.collectionListeners.set(key, next)
     return () => this.collectionListeners.delete(key)
@@ -68,6 +70,44 @@ describe('Firebase production boundary', () => {
       authDomain: 'vibecoding-a3ada.firebaseapp.com',
       projectId: 'vibecoding-a3ada',
     })
+  })
+
+  it('bounds every organizer collection listener to the event capacity model', () => {
+    const driver = new FakeDriver()
+    const backend = createFirebaseEventBackend({ driver, eventId: 'room-vibe26', role: 'organizer' })
+
+    const unsubscribe = backend.subscribe(() => undefined)
+
+    expect(driver.collectionSpecs.length).toBeGreaterThan(0)
+    expect(driver.collectionSpecs.every((spec) => Number.isInteger(spec.limit) && spec.limit! > 0)).toBe(true)
+    unsubscribe()
+  })
+
+  it('loads only the small join projection when public revision data is not requested', () => {
+    const driver = new FakeDriver()
+    const backend = createFirebaseEventBackend({
+      driver,
+      eventId: 'room-vibe26',
+      includePublishedSnapshot: false,
+      publicSlug: 'vibecoding-2026',
+      role: 'public',
+    })
+    const listener = vi.fn()
+
+    const unsubscribe = backend.subscribe(listener)
+    driver.emitDocument('publicEvents/vibecoding-2026', 'vibecoding-2026', {
+      latestRevision: 7,
+      join: {
+        room: { code: 'VIBE26', capacity: 100 },
+        slides: [],
+        live: { activeSlideIndex: 0, timerStatus: 'idle' },
+      },
+    })
+
+    expect(driver.collectionSpecs).toEqual([])
+    expect(listener.mock.calls.at(-1)?.[0].state.publishedSnapshot).toBeNull()
+    expect(listener.mock.calls.at(-1)?.[0].state.room.code).toBe('VIBE26')
+    unsubscribe()
   })
 
   it('writes participant answer drafts directly and reports server confirmation', async () => {

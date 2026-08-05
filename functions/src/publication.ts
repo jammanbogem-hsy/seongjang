@@ -5,6 +5,20 @@ import { HttpsError } from 'firebase-functions/v2/https'
 import type { EventActor } from './lib/authz.js'
 import { db } from './lib/firebase.js'
 
+const MIN_PUBLICATION_INTERVAL_MS = 15_000
+
+export function publicationThrottleRemainingMs(
+  lastStartedAt: unknown,
+  nowMs = Date.now(),
+): number {
+  if (!lastStartedAt || typeof lastStartedAt !== 'object' || !('toMillis' in lastStartedAt)) return 0
+  const toMillis = (lastStartedAt as { toMillis?: unknown }).toMillis
+  if (typeof toMillis !== 'function') return 0
+  const startedAtMs = Number(toMillis.call(lastStartedAt))
+  if (!Number.isFinite(startedAtMs)) return 0
+  return Math.max(0, MIN_PUBLICATION_INTERVAL_MS - (nowMs - startedAtMs))
+}
+
 function publicKey(revision: number, kind: string, privateId: string): string {
   return createHash('sha256')
     .update(`${revision}\u0000${kind}\u0000${privateId}`, 'utf8')
@@ -71,6 +85,16 @@ export async function publishEventProjection(
   const now = Timestamp.now()
   const revision = await db.runTransaction(async (transaction) => {
     const publicRoot = await transaction.get(publicRootRef)
+    const throttleRemainingMs = publicationThrottleRemainingMs(
+      publicRoot.get('lastPublicationStartedAt'),
+      now.toMillis(),
+    )
+    if (throttleRemainingMs > 0) {
+      throw new HttpsError(
+        'resource-exhausted',
+        `발행 후 ${Math.ceil(throttleRemainingMs / 1_000)}초 뒤에 다시 시도해주세요.`,
+      )
+    }
     // Keep allocation separate from the latest successfully published
     // revision. A failed build must never make the next retry collide with
     // the failed revision document.
@@ -78,7 +102,10 @@ export async function publishEventProjection(
       Number(publicRoot.get('revisionSequence') ?? 0),
       Number(publicRoot.get('latestRevision') ?? 0),
     ) + 1
-    transaction.set(publicRootRef, { revisionSequence: nextRevision }, { merge: true })
+    transaction.set(publicRootRef, {
+      lastPublicationStartedAt: now,
+      revisionSequence: nextRevision,
+    }, { merge: true })
     transaction.create(db.doc(`publicEvents/${slug}/revisions/${nextRevision}`), {
       revision: nextRevision,
       status: 'building',

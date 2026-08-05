@@ -20,21 +20,21 @@ export type CatIllustrationVariant =
 export type CatIllustrationSize = 'xs' | 'sm' | 'md' | 'lg' | 'hero'
 
 const catSources: Record<CatIllustrationVariant, string> = {
-  lobby: '/assets/illustrations/cat-lobby.png',
-  ideation: '/assets/illustrations/cat-ideation.png',
-  timer: '/assets/illustrations/cat-timer.png',
-  submission: '/assets/illustrations/cat-submission.png',
-  exhibition: '/assets/illustrations/cat-exhibition.png',
-  welcome: '/assets/mascots/cat-welcome.png',
-  autosave: '/assets/mascots/cat-autosave.png',
-  comment: '/assets/mascots/cat-comment.png',
-  review: '/assets/mascots/cat-review.png',
-  sync: '/assets/mascots/cat-sync.png',
-  focus: '/assets/mascots/cat-focus.png',
-  deadline: '/assets/mascots/cat-deadline.png',
-  empty: '/assets/mascots/cat-empty.png',
-  saved: '/assets/mascots/cat-saved.png',
-  celebrate: '/assets/mascots/cat-celebrate.png',
+  lobby: '/assets/illustrations/cat-lobby.webp',
+  ideation: '/assets/illustrations/cat-ideation.webp',
+  timer: '/assets/illustrations/cat-timer.webp',
+  submission: '/assets/illustrations/cat-submission.webp',
+  exhibition: '/assets/illustrations/cat-exhibition.webp',
+  welcome: '/assets/mascots/cat-welcome.webp',
+  autosave: '/assets/mascots/cat-autosave.webp',
+  comment: '/assets/mascots/cat-comment.webp',
+  review: '/assets/mascots/cat-review.webp',
+  sync: '/assets/mascots/cat-sync.webp',
+  focus: '/assets/mascots/cat-focus.webp',
+  deadline: '/assets/mascots/cat-deadline.webp',
+  empty: '/assets/mascots/cat-empty.webp',
+  saved: '/assets/mascots/cat-saved.webp',
+  celebrate: '/assets/mascots/cat-celebrate.webp',
 }
 
 const catDescriptions: Record<CatIllustrationVariant, string> = {

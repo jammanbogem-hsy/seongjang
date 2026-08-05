@@ -14,7 +14,7 @@ import {
   requireSignedIn,
   type EventActor,
 } from './lib/authz.js'
-import { REGION } from './lib/config.js'
+import { FUNCTION_COST_GUARDRAILS, REGION } from './lib/config.js'
 import { db } from './lib/firebase.js'
 import {
   asRecord,
@@ -234,14 +234,27 @@ async function setAnswerVisibilityAtomically(
   publicRootRef: DocumentReference,
 ): Promise<{ answersRevealed: boolean; commentsEnabled: boolean; slideId: string }> {
   return db.runTransaction(async (transaction) => {
-    const [slide, publicRoot, answers] = await Promise.all([
+    const [slide, publicRoot] = await Promise.all([
       transaction.get(slideRef),
       transaction.get(publicRootRef),
-      transaction.get(db.collection(eventPath(eventId, 'answers')).where('slideId', '==', slideId)),
     ])
     if (!slide.exists || !publicRoot.exists) {
       throw new HttpsError('not-found', '슬라이드 공개 정보를 찾을 수 없습니다.')
     }
+    const currentCommentsEnabled = slide.get('commentsEnabled') === true
+    if (
+      slide.get('answersRevealed') === revealed
+      && (revealed || currentCommentsEnabled === false)
+    ) {
+      return {
+        slideId,
+        answersRevealed: revealed,
+        commentsEnabled: revealed ? currentCommentsEnabled : false,
+      }
+    }
+    const answers = await transaction.get(
+      db.collection(eventPath(eventId, 'answers')).where('slideId', '==', slideId),
+    )
     const answerIds = answers.docs.map((answer) => answer.id)
     const commentSnapshots = []
     for (let offset = 0; offset < answerIds.length; offset += 30) {
@@ -319,6 +332,9 @@ async function updateSlideGate(
     }
     if (type === 'SET_COMMENTS_ENABLED' && enabled && slide.get('answersRevealed') !== true) {
       throw new HttpsError('failed-precondition', '답변을 먼저 공개해야 댓글을 열 수 있습니다.')
+    }
+    if (slide.get('commentsEnabled') === enabled) {
+      return { slideId, commentsEnabled: enabled }
     }
     const patch = { commentsEnabled: enabled }
     const updatedAt = Timestamp.now()
@@ -574,7 +590,7 @@ function projectInput(input: UnknownRecord): {
     demoUrl,
     githubUrl,
     tags: stringArray(input.tags, 6, 40),
-    coverImage: optionalString(input, 'coverImage', 2_000) || '/assets/illustrations/cat-submission.png',
+    coverImage: optionalString(input, 'coverImage', 2_000) || '/assets/illustrations/cat-submission.webp',
   }
 }
 
@@ -1018,7 +1034,12 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
     return result
 }
 
-const commandOptions = { region: REGION, enforceAppCheck: true, timeoutSeconds: 120 } as const
+const commandOptions = {
+  ...FUNCTION_COST_GUARDRAILS,
+  region: REGION,
+  enforceAppCheck: true,
+  timeoutSeconds: 60,
+} as const
 
 export const applyEventCommand = onCall(commandOptions, executeCommand)
 export const applyReviewCommand = onCall(commandOptions, executeCommand)
