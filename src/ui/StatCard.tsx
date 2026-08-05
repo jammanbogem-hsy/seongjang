@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Card, type CardTone } from './Card'
-import { Chip, type ChipTone } from './Chip'
+import type { ChipTone } from './Chip'
 import { Icon } from './Icon'
 import { cx } from './utils'
 
@@ -21,27 +21,23 @@ export function StatCard({
   detail,
   icon,
   trend,
-  trendTone = 'success',
   tone = 'surface',
   className,
 }: StatCardProps) {
+  const supportingText = trend ?? detail
+
   return (
-    <Card className={cx('stat-card', 'ui-stat-card', className)} padding="none" tone={tone}>
+    <Card as="article" className={cx('stat-card', 'ui-stat-card', className)} padding="md" tone={tone}>
       <div className="ui-stat-card__topline">
-        <span className="stat-label ui-stat-card__label">{label}</span>
         {icon ? (
           <span className="ui-stat-card__icon">
             <Icon name={icon} size="md" />
           </span>
         ) : null}
+        <span className="stat-label ui-stat-card__label">{label}</span>
       </div>
       <div className="stat-value ui-stat-card__value">{value}</div>
-      {detail || trend ? (
-        <div className="stat-meta ui-stat-card__footer">
-          {trend ? <Chip tone={trendTone}>{trend}</Chip> : null}
-          {detail ? <span>{detail}</span> : null}
-        </div>
-      ) : null}
+      {supportingText ? <div className="stat-meta ui-stat-card__footer">{supportingText}</div> : null}
     </Card>
   )
 }

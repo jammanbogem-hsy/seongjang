@@ -620,6 +620,7 @@ select:focus-visible,
 .stat-value,
 .ui-stat-card__value {
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   letter-spacing: -.03em;
 }
 
@@ -1354,19 +1355,96 @@ select:focus-visible,
   }
 }
 
-/* Resilient type sizing for live-control cards and long account addresses. */
+/* Compact Google Workspace-style metrics: one label, one value, one optional status. */
 .stage-card,
-.timer-display,
-.ui-stat-card {
+.timer-display {
   min-width: 0;
   overflow: hidden;
 }
 
-.stage-kicker,
-.ui-stat-card__topline,
-.ui-stat-card__footer {
+.stage-kicker {
   min-width: 0;
   flex-wrap: wrap;
+}
+
+.stat-card.ui-stat-card {
+  display: flex;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 132px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px;
+  border: 1px solid #dadce0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.ui-stat-card__topline {
+  display: flex;
+  overflow: hidden;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 24px;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.ui-stat-card__icon {
+  display: grid;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 0;
+  color: #5f6368;
+  background: transparent;
+}
+
+.ui-stat-card__icon .ui-icon {
+  font-size: 20px;
+}
+
+.ui-stat-card__label {
+  display: block;
+  overflow: hidden;
+  min-width: 0;
+  color: #3c4043;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-stat-card__value {
+  overflow: hidden;
+  max-width: 100%;
+  margin: auto 0 0;
+  color: #1f1f1f;
+  font-size: clamp(30px, 2.5vw, 38px);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -.03em;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-stat-card__footer {
+  display: block;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 18px;
+  color: #5f6368;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stage-card h1,
@@ -1382,8 +1460,6 @@ select:focus-visible,
 .ui-section-header h1,
 .ui-section-header h2,
 .ui-section-header p,
-.ui-stat-card__label,
-.ui-stat-card__footer,
 .field-error {
   overflow-wrap: anywhere;
 }
@@ -1393,13 +1469,6 @@ select:focus-visible,
   font-size: clamp(40px, 5vw, 64px);
   letter-spacing: -.045em;
   white-space: nowrap;
-}
-
-.ui-stat-card__value {
-  max-width: 100%;
-  font-size: clamp(27px, 3vw, 40px);
-  line-height: 1.08;
-  overflow-wrap: anywhere;
 }
 
 .admin-layout .list-title,
