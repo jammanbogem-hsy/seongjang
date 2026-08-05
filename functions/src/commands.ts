@@ -8,6 +8,7 @@ import {
 import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https'
 import {
   appendAuditLog,
+  isVerifiedGoogleIdentity,
   requireEventActor,
   requireOwner,
   requireOrganizer,
@@ -909,8 +910,8 @@ async function revokeAdmin(eventId: string, command: UnknownRecord, actor: Event
 
 async function acceptAdminInvite(eventId: string, command: UnknownRecord, auth: Parameters<typeof requireSignedIn>[0]): Promise<CommandSuccess> {
   const signedIn = requireSignedIn(auth)
-  if (signedIn.token.email_verified !== true || typeof signedIn.token.email !== 'string') {
-    throw new HttpsError('permission-denied', '초대받은 이메일의 확인된 계정이 필요합니다.')
+  if (!isVerifiedGoogleIdentity(signedIn.token)) {
+    throw new HttpsError('permission-denied', '초대받은 Google 이메일 계정으로 로그인해주세요.')
   }
   const inviteId = safeDocumentId(requiredString(command, 'inviteId', { max: 128 }), '초대 ID')
   const inviteRef = db.doc(eventPath(eventId, `adminInvites/${inviteId}`))

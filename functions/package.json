@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "clean:vibe26": "node lib/scripts/clean-vibe26-demo.js",
     "test": "vitest run",
     "check": "npm run build && npm run test"
   },
@@ -20,7 +21,9 @@
     "uuid": "^11.1.1"
   },
   "devDependencies": {
+    "@google-cloud/firestore": "^8.7.1",
     "@types/node": "^22.18.0",
+    "google-auth-library": "^10.9.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
   }

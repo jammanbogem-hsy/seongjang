@@ -14,7 +14,7 @@ import type {
   TimerView,
 } from './models'
 import { createPublishedSnapshot } from './publicProjection'
-import { createSeedState, normalizeNickname } from './seed'
+import { createEmptyState, normalizeNickname } from './eventTemplate'
 
 export interface CommandEnvironment {
   now: () => number
@@ -694,10 +694,10 @@ export function executePlatformCommand(
     }
 
     case 'RESET_DEMO': {
-      const seed = createSeedState()
+      const seed = createEmptyState()
       return {
         state: { ...seed, revision: state.revision + 1 },
-        result: { ok: true, value: undefined, notice: '큐레이션된 데모 상태로 되돌렸어요.' },
+        result: { ok: true, value: undefined, notice: '빈 행사 상태로 초기화했어요.' },
       }
     }
   }

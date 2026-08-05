@@ -18,7 +18,7 @@ import type {
 import { downloadTextExport } from '../platform/download'
 import { useAutosave } from '../platform/useAutosave'
 import { usePersistentDraft } from '../platform/usePersistentDraft'
-import { acceptAdminInviteEmailLink, isAdminInviteEmailLink } from '../platform/firebase'
+import { acceptAdminInviteWithGoogle, isAdminInviteEmailLink } from '../platform/firebase'
 import { AdminLayout, ParticipantLayout } from '../layouts'
 import {
   AutosaveStatus,
@@ -74,7 +74,6 @@ function ResultLink({ to, children }: { to: string; children: ReactNode }) {
 export function AdminInviteAcceptPage() {
   const { search } = useLocation()
   const { inviteId = '' } = useParams<{ inviteId: string }>()
-  const [email, setEmail] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [message, setMessage] = useState('')
   const eventId = new URLSearchParams(search).get('eventId') || EVENT_ID
@@ -85,7 +84,7 @@ export function AdminInviteAcceptPage() {
     setStatus('loading')
     setMessage('')
     try {
-      await acceptAdminInviteEmailLink(email, inviteId, eventId)
+      await acceptAdminInviteWithGoogle(inviteId, eventId)
       setStatus('done')
       setMessage('관리자 권한이 연결되었습니다. 운영 화면으로 이동합니다.')
       window.setTimeout(() => window.location.assign(`/admin/events/${eventId}/control`), 500)
@@ -101,23 +100,15 @@ export function AdminInviteAcceptPage() {
         <Card padding="lg">
           <CatIllustration size="lg" variant="welcome" />
           <SectionHeader
-            description="초대받은 이메일 주소를 확인하면 행사 관리자 권한이 연결됩니다."
+            description="초대받은 동일한 Google 계정으로 로그인하면 행사 관리자 권한이 연결됩니다."
             eyebrow="ADMIN INVITE"
             title="관리자 초대 수락"
             titleAs="h1"
           />
           {validLink ? (
             <form className="form-grid" onSubmit={accept}>
-              <Field
-                autoComplete="email"
-                label="초대받은 이메일"
-                onChange={(event) => setEmail(event.target.value)}
-                required
-                type="email"
-                value={email}
-              />
               <Button disabled={status === 'loading'} leadingIcon="verified_user" size="lg" type="submit">
-                {status === 'loading' ? '권한 확인 중' : '관리자 권한 수락'}
+                {status === 'loading' ? '권한 확인 중' : 'Google로 초대 수락'}
               </Button>
             </form>
           ) : (
@@ -951,7 +942,7 @@ export function SubmissionPage() {
         ) : null}
         <Card padding="lg">
           <div className="form-grid">
-            <Field label="작품명" maxLength={60} onChange={(event) => update('title', event.target.value)} placeholder="예: README 정원사" required value={form.title} />
+            <Field label="작품명" maxLength={60} onChange={(event) => update('title', event.target.value)} placeholder="작품명을 입력하세요" required value={form.title} />
             <Field label="한 줄 소개" maxLength={120} onChange={(event) => update('pitch', event.target.value)} placeholder="무엇을 누구에게 어떻게 바꾸는지 한 문장으로" required value={form.pitch} />
             <Textarea label="상세 설명" maxLength={1500} onChange={(event) => update('description', event.target.value)} required rows={6} showCount value={form.description} />
             <div className="grid two">
@@ -1221,7 +1212,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
   const meta = {
     participants: ['PARTICIPANTS · PRIVATE', '참여자와 재입장 지원', '닉네임, 접속 상태와 개인 제출 현황을 확인합니다. PIN은 명시적인 조회 사유를 입력한 뒤 한 명씩 확인할 수 있습니다.'],
     submissions: ['INDIVIDUAL WORKS', '개인 작품 제출 현황', '참여자마다 한 작품만 제출합니다. 공개 전시에는 제출 완료된 작품만 포함됩니다.'],
-    admins: ['ACCESS MANAGEMENT', '관리자 초대와 권한', '초대 이메일과 일치하는 계정이 관리자 권한을 수락하고 행사 운영에 참여합니다.'],
+    admins: ['ACCESS MANAGEMENT', '관리자 초대와 권한', '초대받은 동일한 Google 계정만 관리자 권한을 수락하고 행사 운영에 참여할 수 있습니다.'],
     portability: ['PORTABLE EVENT DATA', '다른 행사와 도구로 연결', '동일한 공개 리비전에서 JSON, CSV, Markdown, README와 iframe 코드를 만듭니다.'],
   }[section]
 
@@ -1397,10 +1388,10 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
               <Card padding="lg">
                 <SectionHeader description="동일 이메일의 Google 계정으로 수락하는 흐름입니다." eyebrow="EMAIL INVITE" title="관리자 초대" titleAs="h2" />
                 {authRole === 'owner' ? <form className="form-grid" onSubmit={invite}>
-                  <Field label="이메일 주소" onChange={(event) => setInviteEmail(event.target.value)} placeholder="admin@example.com" required type="email" value={inviteEmail} />
+                  <Field autoComplete="email" label="Google 이메일 주소" onChange={(event) => setInviteEmail(event.target.value)} placeholder="name@gmail.com" required type="email" value={inviteEmail} />
                   <Button leadingIcon="person_add" type="submit">초대 보내기</Button>
                 </form> : <OutcomeNote tone="warm">관리자 초대와 해제는 행사 Owner만 할 수 있습니다.</OutcomeNote>}
-                <OutcomeNote>Firebase Authentication의 일회용 로그인 링크가 발송되며, 초대받은 이메일만 권한을 수락할 수 있습니다.</OutcomeNote>
+                <OutcomeNote>입력한 Gmail 또는 Google Workspace 받은편지함으로 초대 링크가 발송됩니다. 링크를 연 뒤 동일한 Google 계정을 선택해야 합니다.</OutcomeNote>
               </Card>
               <Card padding="lg">
                 <SectionHeader description="Owner 1명과 초대된 관리자" eyebrow="ACCESS LIST" title="현재 권한" titleAs="h2" />

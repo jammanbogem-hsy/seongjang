@@ -23,7 +23,7 @@ npm run test:rules
 npm --prefix functions run check
 ```
 
-## 주요 데모 경로
+## 주요 경로
 
 - `/` — 해커톤 서비스 소개와 방 입장·운영 진입
 - `/ebook` — PDF 원문을 책 넘김 효과로 읽는 강의 원고 온라인 책자
@@ -33,8 +33,9 @@ npm --prefix functions run check
 - `/admin/events/room-vibe26/control` — 주최자 라이브 콘솔
 - `/admin/events/room-vibe26/participants` — 참여자와 PIN 확인 UX
 - `/admin/events/room-vibe26/synthesis` — 단계별 답변 정리와 공개 리비전 발행
+- `/admin/events/room-vibe26/admins` — Owner의 Google 이메일 관리자 초대·권한 회수
 - `/admin/events/room-vibe26/portability` — iframe/JSON/CSV/Markdown/README
-- `/admin/invites/:inviteId` — 이메일 링크 기반 관리자 초대 수락
+- `/admin/invites/:inviteId` — 초대 링크를 연 동일한 Google 계정의 관리자 권한 수락
 - `/dashboards/vibecoding-2026` — 공개 수합 대시보드
 - `/exhibitions/vibecoding-2026` — 개인 작품 전시
 
@@ -47,11 +48,11 @@ npm --prefix functions run check
 - Google Drive의 정보 밀도를 참고한 Material Design 3 UI: Google Sans Flex·Noto Sans KR, Material Symbols, 단일 Google Blue와 절제된 중립색 표면
 - 데스크톱 주최자용 좌측 작업공간 내비게이션, 참여자·공개 화면용 상단 내비게이션, 모바일 하단 내비게이션
 - 반응형 주최자 콘솔, 집중형 참여자 화면, 공개 전시 레이아웃
-- Firebase Authentication: Google 주최자 계정, 일회용 이메일 관리자 초대, 익명 사전 인증 후 닉네임·PIN 기반 참여자 custom token
+- Firebase Authentication: Google 주최자 계정, 이메일 초대 링크와 동일 Google 계정 검증, 익명 사전 인증 후 닉네임·PIN 기반 참여자 custom token
 - Cloud Firestore: 서울 `asia-northeast3`, 운영 메모리 캐시, 실시간 listener
 - Cloud Functions v2: 참여/재입장, 진행 제어, 제출, 댓글, 비공개 검토, 관리자 초대, 발행, PIN 감사 조회
 - 비용 가드: Functions 최대 10 instance·40 concurrent request, 유한 listener, 화면별 공개 shard 로딩
-- Firestore Security Rules: 기본 거부, 행사 멤버 역할과 참여자 소유 초안에 따른 최소 권한
+- Firestore Security Rules: 기본 거부, 행사 멤버 역할·Google 로그인 공급자·참여자 소유 초안에 따른 최소 권한
 - Firebase App Check: reCAPTCHA Enterprise 권장 위험 기준 `0.5`로 Firestore와 callable Functions 요청 검증
 - HMAC 익명화된 인증 세션·기기·IP 계층형 입장 제한과 Firestore TTL 자동 정리
 - 신규 닉네임용 6자리 입장 키와 기존 참여자용 4자리 PIN을 분리하고, 민감 인증 함수는 전용 최소권한 서비스 계정에서 실행
@@ -79,20 +80,19 @@ Functions의 공개 설정은 `functions/.env.vibecoding-a3ada`, PIN 암호화 �
 
 운영 무료 구간, 예산 알림, 과금 위험과 행사 전후 확인사항은 [Firebase 운영 비용 가드](docs/FIREBASE_COSTS.md)에 정리했습니다.
 
-## 입력된 행사 데이터
+## 운영 행사 상태
 
-`room-vibe26`에는 제품 흐름을 확인할 수 있는 큐레이션 데이터가 입력되어 있습니다.
+`room-vibe26`은 실제 행사 입력을 받기 위한 빈 상태입니다. 화면 확인용 참여자·답변·댓글·작품·공개 리비전은 Firestore에서 제거했고, 이후 초기 생성도 더미 데이터를 만들지 않습니다.
 
-- 참여자 24명, 정원 100명(공개 입장 화면에는 인원 수만 표시)
-- 단계 슬라이드 4개와 개인 답변 18개
-- 공개 댓글 4개와 비공개 검토 스레드 2개
-- 개인 작품 6개와 공통 테마 3개
-- 공개 리비전 1개와 공개 대시보드·전시 projection
-- 소유자 `jammanbogem@gmail.com`, 관리자 이메일 초대 예시 1개
+- 소유자 `jammanbogem@gmail.com` 1명
+- 참여자 0명 / 최대 100명
+- 진행용 슬라이드 4개, 로비·타이머 정지·답변 비공개 상태
+- 개인 답변·댓글·검토·작품·테마·관리자 초대 0개
+- 공개 대시보드·작품 전시 비공개
 
 ## 운영 체크
 
-핵심 제품 흐름은 Firebase에 연결되어 있습니다. 관리자 초대 메일, App Check 강제 적용, 서울 리전 Functions와 입장 요청 제한도 활성화되어 있습니다. 실제 행사 전에는 아래 항목을 현장 조건에 맞춰 확인합니다.
+핵심 제품 흐름은 Firebase에 연결되어 있습니다. 관리자 초대 메일, 초대받은 동일 Google 계정 검증, App Check 강제 적용, 서울 리전 Functions와 입장 요청 제한도 활성화되어 있습니다. 실제 행사 전에는 아래 항목을 현장 조건에 맞춰 확인합니다.
 
 - 100명 동시 입장·자동저장 부하 리허설과 현장 네트워크 대응(Functions 최대 동시 처리 400요청, 정원 서버 검증)
 - 작품 이미지 업로드를 열 경우 Storage MIME 검사와 메타데이터 제거

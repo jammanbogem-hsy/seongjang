@@ -30,6 +30,12 @@ const participantB = 'participant-b'
 const ownerUid = 'owner-user'
 const adminUid = 'admin-user'
 
+const googleOrganizerClaims = {
+  email: 'organizer@gmail.com',
+  email_verified: true,
+  firebase: { sign_in_provider: 'google.com' },
+}
+
 function emulatorAddress(): { host: string; port: number } {
   const [host = '127.0.0.1', rawPort = '8080'] = (emulatorHost ?? '127.0.0.1:8080').split(':')
   return { host, port: Number(rawPort) }
@@ -309,8 +315,8 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
   })
 
   it('keeps unsent member composer drafts private from organizers', async () => {
-    const ownerDb = testEnvironment.authenticatedContext(ownerUid).firestore()
-    const adminDb = testEnvironment.authenticatedContext(adminUid).firestore()
+    const ownerDb = testEnvironment.authenticatedContext(ownerUid, googleOrganizerClaims).firestore()
+    const adminDb = testEnvironment.authenticatedContext(adminUid, googleOrganizerClaims).firestore()
     const privateDraftPath = `events/${eventId}/members/${participantB}/drafts/comment__answer-revealed`
 
     await assertFails(getDoc(doc(ownerDb, privateDraftPath)))
@@ -318,7 +324,7 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
   })
 
   it('allows only organizers to autosave review composers for existing targets', async () => {
-    const ownerDb = testEnvironment.authenticatedContext(ownerUid).firestore()
+    const ownerDb = testEnvironment.authenticatedContext(ownerUid, googleOrganizerClaims).firestore()
     const participantDb = testEnvironment.authenticatedContext(participantA).firestore()
     const draft = privateComposerDraft('review-composer')
     const ownerDraft = doc(ownerDb, `events/${eventId}/members/${ownerUid}/drafts/review-composer__answer-revealed`)
@@ -353,7 +359,7 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
     ['owner', ownerUid],
     ['admin', adminUid],
   ])('allows an active %s member to read organizer data', async (_role, uid) => {
-    const db = testEnvironment.authenticatedContext(uid).firestore()
+    const db = testEnvironment.authenticatedContext(uid, googleOrganizerClaims).firestore()
 
     await assertSucceeds(getDoc(doc(db, `events/${eventId}`)))
     await assertSucceeds(getDoc(doc(db, `events/${eventId}/live/state`)))
@@ -364,8 +370,8 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
   })
 
   it('keeps participant secrets inaccessible even to organizer clients', async () => {
-    const ownerDb = testEnvironment.authenticatedContext(ownerUid).firestore()
-    const adminDb = testEnvironment.authenticatedContext(adminUid).firestore()
+    const ownerDb = testEnvironment.authenticatedContext(ownerUid, googleOrganizerClaims).firestore()
+    const adminDb = testEnvironment.authenticatedContext(adminUid, googleOrganizerClaims).firestore()
 
     await assertFails(getDoc(doc(ownerDb, `participantSecrets/${eventId}/members/${participantA}`)))
     await assertFails(getDoc(doc(adminDb, `participantSecrets/${eventId}/members/${participantA}`)))
@@ -378,5 +384,17 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
       activeSlideId: 'stage-build',
       revision: 2,
     }))
+  })
+
+  it('denies organizer-only data to an active member signed in without Google', async () => {
+    const db = testEnvironment.authenticatedContext(adminUid, {
+      email: 'admin@gmail.com',
+      email_verified: true,
+      firebase: { sign_in_provider: 'password' },
+    }).firestore()
+
+    await assertSucceeds(getDoc(doc(db, `events/${eventId}`)))
+    await assertFails(getDoc(doc(db, `events/${eventId}/participants/${participantA}`)))
+    await assertFails(getDoc(doc(db, `events/${eventId}/adminInvites/invite-1`)))
   })
 })

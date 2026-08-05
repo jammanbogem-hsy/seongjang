@@ -15,6 +15,15 @@ export function requireSignedIn(auth: CallableAuth): NonNullable<CallableAuth> {
   return auth
 }
 
+export function isVerifiedGoogleIdentity(token: Record<string, unknown>): boolean {
+  const firebaseClaim = token.firebase
+  return token.email_verified === true
+    && typeof token.email === 'string'
+    && typeof firebaseClaim === 'object'
+    && firebaseClaim !== null
+    && (firebaseClaim as Record<string, unknown>).sign_in_provider === 'google.com'
+}
+
 export async function requireEventActor(
   eventId: string,
   auth: CallableAuth,
@@ -43,8 +52,8 @@ export async function requireOrganizer(
   if (actor.role !== 'owner' && actor.role !== 'admin') {
     throw new HttpsError('permission-denied', '주최자 권한이 필요합니다.')
   }
-  if (auth?.token.email_verified !== true) {
-    throw new HttpsError('permission-denied', '이메일 인증이 완료된 관리자 계정이 필요합니다.')
+  if (!auth || !isVerifiedGoogleIdentity(auth.token)) {
+    throw new HttpsError('permission-denied', '인증된 Google 계정으로 다시 로그인해야 주최자 기능을 사용할 수 있습니다.')
   }
   return actor as EventActor & { role: 'admin' | 'owner' }
 }

@@ -18,7 +18,7 @@ import type {
   Slide,
   TimerView,
 } from '../domain/models'
-import { createSeedState } from '../domain/seed'
+import { createEmptyState } from '../domain/eventTemplate'
 import {
   bootstrapVibe26Event,
   createFirebaseEventBackend,
@@ -99,7 +99,7 @@ function LocalPlatformProvider({ children }: { children: ReactNode }) {
   }
 
   const [state, setState] = useState<PrototypeState>(() =>
-    persistenceRef.current?.load() ?? createSeedState(),
+    persistenceRef.current?.load() ?? createEmptyState(),
   )
   const stateRef = useRef(state)
   const [selectedParticipantId, setSelectedParticipant] = useState<string | null>(() =>
@@ -233,7 +233,7 @@ function toFirebaseCommand(
 
 function FirebasePlatformProvider({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
-  const seedRef = useRef(createSeedState())
+  const seedRef = useRef(createEmptyState())
   const [state, setState] = useState(seedRef.current)
   const stateRef = useRef(state)
   const backendRef = useRef<FirebaseBackend | null>(null)
@@ -380,7 +380,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
         return {
           ok: true,
           value: response.value as T,
-          notice: 'Firebase 인증 관리자 초대 메일을 보냈어요.',
+          notice: '초대 메일을 보냈어요. 받은 사람은 동일한 Google 계정으로만 권한을 수락할 수 있어요.',
         }
       }
       const remote = toFirebaseCommand(command, stateRef.current)

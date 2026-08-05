@@ -6,7 +6,6 @@ import {
   sendSignInLinkToEmail,
   signInAnonymously,
   signInWithCustomToken,
-  signInWithEmailLink,
   signInWithPopup,
   signOut,
   type User,
@@ -255,8 +254,7 @@ export function isAdminInviteEmailLink(href = window.location.href): boolean {
   return isSignInWithEmailLink(getFirebaseServices().auth, href)
 }
 
-export async function acceptAdminInviteEmailLink(
-  email: string,
+export async function acceptAdminInviteWithGoogle(
   inviteId: string,
   eventId: string,
   href = window.location.href,
@@ -265,7 +263,9 @@ export async function acceptAdminInviteEmailLink(
   if (!isSignInWithEmailLink(services.auth, href)) {
     throw new Error('유효한 관리자 초대 링크가 아닙니다.')
   }
-  const credential = await signInWithEmailLink(services.auth, email.trim(), href)
+  const provider = new GoogleAuthProvider()
+  provider.setCustomParameters({ prompt: 'select_account' })
+  const credential = await signInWithPopup(services.auth, provider)
   const callable = httpsCallable<
     { command: { inviteId: string; type: 'ACCEPT_ADMIN_INVITE' }; eventId: string },
     { ok?: boolean }

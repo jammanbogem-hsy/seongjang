@@ -13,6 +13,7 @@ export const organizerNav: AppNavItem[] = [
   { label: '참여자', to: `/admin/events/${EVENT_ID}/participants`, icon: 'group' },
   { label: '정리', to: `/admin/events/${EVENT_ID}/synthesis`, icon: 'dashboard' },
   { label: '작품', to: `/admin/events/${EVENT_ID}/submissions`, icon: 'gallery_thumbnail' },
+  { label: '관리자', to: `/admin/events/${EVENT_ID}/admins`, icon: 'manage_accounts' },
   { label: '연결', to: `/admin/events/${EVENT_ID}/portability`, icon: 'hub' },
 ]
 

@@ -76,11 +76,11 @@ describe('PlatformProvider live clock', () => {
 
   it('publishes a new timer view to consumers every second while running', () => {
     render(<PlatformProvider><TimerHarness /></PlatformProvider>)
-    expect(screen.getByLabelText('남은 시간')).toHaveTextContent('642')
+    expect(screen.getByLabelText('남은 시간')).toHaveTextContent('720')
     fireEvent.click(screen.getByRole('button', { name: '시작' }))
 
     act(() => vi.advanceTimersByTime(2_000))
-    expect(screen.getByLabelText('남은 시간')).toHaveTextContent('640')
+    expect(screen.getByLabelText('남은 시간')).toHaveTextContent('718')
   })
 
   it('synchronizes live slide revisions between tabs and survives strict effect replay', () => {
@@ -90,9 +90,9 @@ describe('PlatformProvider live clock', () => {
         <PlatformProvider><SyncHarness id="참여자" /></PlatformProvider>
       </StrictMode>,
     )
-    expect(screen.getByLabelText('참여자 현재 단계')).toHaveTextContent('3')
+    expect(screen.getByLabelText('참여자 현재 단계')).toHaveTextContent('1')
     fireEvent.click(screen.getByRole('button', { name: '다음 단계' }))
-    expect(screen.getByLabelText('주최자 현재 단계')).toHaveTextContent('4')
-    expect(screen.getByLabelText('참여자 현재 단계')).toHaveTextContent('4')
+    expect(screen.getByLabelText('주최자 현재 단계')).toHaveTextContent('2')
+    expect(screen.getByLabelText('참여자 현재 단계')).toHaveTextContent('2')
   })
 })

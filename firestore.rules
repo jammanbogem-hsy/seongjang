@@ -16,8 +16,15 @@ service cloud.firestore {
         && get(memberPath(eventId)).data.status == 'active';
     }
 
+    function isVerifiedGoogleAccount() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+
     function isOrganizer(eventId) {
-      return isActiveMember(eventId)
+      return isVerifiedGoogleAccount()
+        && isActiveMember(eventId)
         && get(memberPath(eventId)).data.role in ['owner', 'admin'];
     }
 
