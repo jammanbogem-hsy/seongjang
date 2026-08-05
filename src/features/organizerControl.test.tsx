@@ -10,12 +10,14 @@ describe('organizer live controls', () => {
     window.history.replaceState(null, '', '/admin/events/room-vibe26/control')
     window.localStorage.clear()
     window.sessionStorage.clear()
+    vi.stubGlobal('BroadcastChannel', undefined)
     vi.useFakeTimers()
   })
 
   afterEach(() => {
     cleanup()
     vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
   it('adjusts the active timer and autosaves slide edits', async () => {
@@ -43,5 +45,31 @@ describe('organizer live controls', () => {
 
     expect(screen.getByRole('heading', { name: '참여자와 함께 고친 질문' })).toBeInTheDocument()
     expect(window.localStorage.getItem(PLATFORM_STORAGE_KEY)).toContain('참여자와 함께 고친 질문')
+  })
+
+  it('adds a new slide without changing the participant live page', async () => {
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <OrganizerControlPage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    const liveTitle = '오늘 우리가 풀고 싶은 장면은?'
+    expect(screen.getByRole('heading', { name: liveTitle })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '새 슬라이드' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '슬라이드 제목' }), {
+      target: { value: '참여자 질문 추가 테스트' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: '참여자 질문' }), {
+      target: { value: '새 질문에 각자의 답을 적어주세요.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '슬라이드 추가' }))
+
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByText('참여자 질문 추가 테스트')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: liveTitle })).toBeInTheDocument()
+    expect(window.localStorage.getItem(PLATFORM_STORAGE_KEY)).toContain('참여자 질문 추가 테스트')
   })
 })

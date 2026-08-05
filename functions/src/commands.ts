@@ -65,7 +65,14 @@ const MAX_REVIEW_MESSAGES_PER_THREAD = 50
 const MIN_REVIEW_REPLY_INTERVAL_MS = 2_000
 const MAX_REVIEW_THREADS_PER_TARGET = 5
 const MAX_REVIEW_THREADS_PER_PARTICIPANT = 20
+const MAX_SLIDES = 12
 const COMMAND_WINDOW_MS = 60_000
+const ALLOWED_SLIDE_ILLUSTRATIONS = new Set([
+  '/assets/illustrations/cat-ideation.webp',
+  '/assets/illustrations/cat-lobby.webp',
+  '/assets/illustrations/cat-submission.webp',
+  '/assets/illustrations/cat-timer.webp',
+])
 const commandBuckets = new Map<string, { count: number; window: number }>()
 
 function consumeInstanceCommandBudget(eventId: string, actor: EventActor): void {
@@ -355,6 +362,207 @@ async function updateSlideContent(
     return { id: slideId, ...patch }
   })
   return success(value, '슬라이드 내용을 모든 참여자 화면에 반영했습니다.')
+}
+
+async function createSlide(
+  eventId: string,
+  command: UnknownRecord,
+  actor: EventActor,
+): Promise<CommandSuccess> {
+  const input = commandInput(command, '새 슬라이드')
+  const durationSec = requiredInteger(input, 'durationSec', 60, 10_800)
+  const illustration = requiredString(input, 'illustration', { max: 180, label: '삽화' })
+  if (!ALLOWED_SLIDE_ILLUSTRATIONS.has(illustration)) {
+    throw new HttpsError('invalid-argument', '사용할 수 없는 슬라이드 삽화입니다.')
+  }
+  const content = {
+    eyebrow: requiredString(input, 'eyebrow', { max: 80, label: '단계 이름' }),
+    title: requiredString(input, 'title', { max: 160, label: '슬라이드 제목' }),
+    prompt: requiredString(input, 'prompt', { max: 800, label: '참여자 질문' }),
+    helper: optionalString(input, 'helper', 500),
+  }
+  const { publicRootPath } = await eventAndPublicRoot(eventId)
+  const slidesCollection = db.collection(eventPath(eventId, 'slides'))
+  const newSlideRef = slidesCollection.doc()
+  const publicRootRef = db.doc(publicRootPath)
+  const value = await db.runTransaction(async (transaction) => {
+    const [slideRecords, publicRoot] = await Promise.all([
+      transaction.get(slidesCollection.orderBy('order', 'asc')),
+      transaction.get(publicRootRef),
+    ])
+    if (!publicRoot.exists) throw new HttpsError('not-found', '참여 화면 정보를 찾을 수 없습니다.')
+    if (slideRecords.size >= MAX_SLIDES) {
+      throw new HttpsError('resource-exhausted', `슬라이드는 최대 ${MAX_SLIDES}개까지 만들 수 있습니다.`)
+    }
+    const now = Timestamp.now()
+    const created = {
+      id: newSlideRef.id,
+      order: slideRecords.size + 1,
+      ...content,
+      durationSec,
+      illustration,
+      answersRevealed: false,
+      commentsEnabled: false,
+    }
+    const join = publicRoot.get('join') as { slides?: Array<Record<string, unknown>> } | undefined
+    if (!Array.isArray(join?.slides)) {
+      throw new HttpsError('failed-precondition', '공개 참여 화면의 슬라이드 목록을 찾을 수 없습니다.')
+    }
+    transaction.create(newSlideRef, { ...created, createdAt: now, updatedAt: now, updatedBy: actor.uid })
+    transaction.update(
+      publicRootRef,
+      'join.slides', [...join.slides, created],
+      'join.updatedAt', now,
+    )
+    return created
+  })
+  return success(value, '새 슬라이드를 덱 마지막에 추가했습니다.')
+}
+
+async function deleteSlide(
+  eventId: string,
+  command: UnknownRecord,
+  actor: EventActor,
+): Promise<CommandSuccess> {
+  const slideId = safeDocumentId(requiredString(command, 'slideId', { max: 128 }), '슬라이드 ID')
+  const { publicRootPath } = await eventAndPublicRoot(eventId)
+  const slidesCollection = db.collection(eventPath(eventId, 'slides'))
+  const slideRef = slidesCollection.doc(slideId)
+  const liveRef = db.doc(eventPath(eventId, 'live/state'))
+  const publicRootRef = db.doc(publicRootPath)
+  const value = await db.runTransaction(async (transaction) => {
+    const [slideRecords, live, publicRoot, answers, drafts] = await Promise.all([
+      transaction.get(slidesCollection.orderBy('order', 'asc')),
+      transaction.get(liveRef),
+      transaction.get(publicRootRef),
+      transaction.get(db.collection(eventPath(eventId, 'answers')).where('slideId', '==', slideId).limit(1)),
+      transaction.get(db.collection(eventPath(eventId, 'answerDrafts')).where('slideId', '==', slideId).limit(1)),
+    ])
+    const deletingIndex = slideRecords.docs.findIndex((slide) => slide.id === slideId)
+    if (deletingIndex < 0) throw new HttpsError('not-found', '삭제할 슬라이드를 찾을 수 없습니다.')
+    if (!live.exists || !publicRoot.exists) throw new HttpsError('not-found', '행사 진행 정보를 찾을 수 없습니다.')
+    if (slideRecords.size <= 1) throw new HttpsError('failed-precondition', '행사에는 슬라이드가 하나 이상 필요합니다.')
+    if (live.get('activeSlideId') === slideId && live.get('timerStatus') === 'running') {
+      throw new HttpsError('failed-precondition', '진행 중인 슬라이드는 타이머를 일시정지한 뒤 삭제해주세요.')
+    }
+    if (!answers.empty || !drafts.empty) {
+      throw new HttpsError('failed-precondition', '참여자 답변이 있는 슬라이드는 삭제할 수 없습니다.')
+    }
+
+    const remaining = slideRecords.docs.filter((slide) => slide.id !== slideId)
+    const publicJoin = publicRoot.get('join') as { slides?: Array<Record<string, unknown>> } | undefined
+    if (!Array.isArray(publicJoin?.slides)) {
+      throw new HttpsError('failed-precondition', '공개 참여 화면의 슬라이드 목록을 찾을 수 없습니다.')
+    }
+    const publicById = new Map(publicJoin.slides.map((slide) => [String(slide.id ?? ''), slide]))
+    const publicSlides = remaining.map((slide, index) => ({
+      ...(publicById.get(slide.id) ?? slide.data()),
+      id: slide.id,
+      order: index + 1,
+    }))
+    const currentActiveId = String(live.get('activeSlideId') ?? '')
+    const activeWasDeleted = currentActiveId === slideId
+    const fallback = activeWasDeleted
+      ? remaining[Math.min(deletingIndex, remaining.length - 1)]!
+      : remaining.find((slide) => slide.id === currentActiveId) ?? remaining[0]!
+    const activeSlideIndex = remaining.findIndex((slide) => slide.id === fallback.id)
+    const now = Timestamp.now()
+    const nextLive = {
+      ...live.data(),
+      activeSlideId: fallback.id,
+      activeSlideIndex,
+      ...(activeWasDeleted ? {
+        previousSlideId: slideId,
+        timerStatus: 'idle',
+        durationSec: Number(fallback.get('durationSec') ?? 0),
+        remainingSec: Number(fallback.get('durationSec') ?? 0),
+        endsAt: null,
+      } : {}),
+      revision: revisionOf(live),
+      updatedAt: now,
+      updatedBy: actor.uid,
+    }
+    transaction.delete(slideRef)
+    remaining.forEach((slide, index) => {
+      if (Number(slide.get('order') ?? 0) !== index + 1) {
+        transaction.update(slide.ref, { order: index + 1, updatedAt: now, updatedBy: actor.uid })
+      }
+    })
+    transaction.set(liveRef, nextLive)
+    transaction.update(
+      publicRootRef,
+      'join.slides', publicSlides,
+      'join.live', publicLiveProjection(nextLive),
+      'join.updatedAt', now,
+    )
+    return { activeSlideId: fallback.id, deletedSlideId: slideId }
+  })
+  return success(value, '슬라이드를 삭제하고 덱 순서를 다시 정리했습니다.')
+}
+
+async function moveSlide(
+  eventId: string,
+  command: UnknownRecord,
+  actor: EventActor,
+): Promise<CommandSuccess> {
+  const slideId = safeDocumentId(requiredString(command, 'slideId', { max: 128 }), '슬라이드 ID')
+  const direction = requiredString(command, 'direction', { max: 8, label: '이동 방향' })
+  if (direction !== 'up' && direction !== 'down') {
+    throw new HttpsError('invalid-argument', '슬라이드 이동 방향을 확인해주세요.')
+  }
+  const { publicRootPath } = await eventAndPublicRoot(eventId)
+  const slidesCollection = db.collection(eventPath(eventId, 'slides'))
+  const liveRef = db.doc(eventPath(eventId, 'live/state'))
+  const publicRootRef = db.doc(publicRootPath)
+  const value = await db.runTransaction(async (transaction) => {
+    const [slideRecords, live, publicRoot] = await Promise.all([
+      transaction.get(slidesCollection.orderBy('order', 'asc')),
+      transaction.get(liveRef),
+      transaction.get(publicRootRef),
+    ])
+    if (!live.exists || !publicRoot.exists) throw new HttpsError('not-found', '행사 진행 정보를 찾을 수 없습니다.')
+    const sourceIndex = slideRecords.docs.findIndex((slide) => slide.id === slideId)
+    if (sourceIndex < 0) throw new HttpsError('not-found', '이동할 슬라이드를 찾을 수 없습니다.')
+    const targetIndex = sourceIndex + (direction === 'up' ? -1 : 1)
+    if (!slideRecords.docs[targetIndex]) {
+      throw new HttpsError('failed-precondition', '슬라이드를 더 이동할 수 없습니다.')
+    }
+    const reordered = [...slideRecords.docs]
+    ;[reordered[sourceIndex], reordered[targetIndex]] = [reordered[targetIndex]!, reordered[sourceIndex]!]
+    const publicJoin = publicRoot.get('join') as { slides?: Array<Record<string, unknown>> } | undefined
+    if (!Array.isArray(publicJoin?.slides)) {
+      throw new HttpsError('failed-precondition', '공개 참여 화면의 슬라이드 목록을 찾을 수 없습니다.')
+    }
+    const publicById = new Map(publicJoin.slides.map((slide) => [String(slide.id ?? ''), slide]))
+    const publicSlides = reordered.map((slide, index) => ({
+      ...(publicById.get(slide.id) ?? slide.data()),
+      id: slide.id,
+      order: index + 1,
+    }))
+    const activeSlideId = String(live.get('activeSlideId') ?? '')
+    const now = Timestamp.now()
+    const nextLive = {
+      ...live.data(),
+      activeSlideIndex: Math.max(0, reordered.findIndex((slide) => slide.id === activeSlideId)),
+      revision: revisionOf(live),
+      updatedAt: now,
+      updatedBy: actor.uid,
+    }
+    reordered.forEach((slide, index) => {
+      if (Number(slide.get('order') ?? 0) !== index + 1) {
+        transaction.update(slide.ref, { order: index + 1, updatedAt: now, updatedBy: actor.uid })
+      }
+    })
+    transaction.set(liveRef, nextLive)
+    transaction.update(
+      publicRootRef,
+      'join.slides', publicSlides,
+      'join.live', publicLiveProjection(nextLive),
+      'join.updatedAt', now,
+    )
+    return { direction, slideId, targetIndex }
+  })
+  return success(value, '슬라이드 순서를 변경했습니다.')
 }
 
 async function setAnswerVisibilityAtomically(
@@ -1098,6 +1306,9 @@ const participantCommands = new Set([
 ])
 const organizerCommands = new Set([
   'ADD_REVIEW_THREAD',
+  'CREATE_SLIDE',
+  'DELETE_SLIDE',
+  'MOVE_SLIDE',
   'PAUSE_TIMER',
   'PUBLISH_SYNTHESIS',
   'RESET_TIMER',
@@ -1152,6 +1363,15 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
       }
       case 'SET_ACTIVE_SLIDE':
         result = await setActiveSlide(eventId, command, actor)
+        break
+      case 'CREATE_SLIDE':
+        result = await createSlide(eventId, command, actor)
+        break
+      case 'DELETE_SLIDE':
+        result = await deleteSlide(eventId, command, actor)
+        break
+      case 'MOVE_SLIDE':
+        result = await moveSlide(eventId, command, actor)
         break
       case 'SET_TIMER_DURATION':
         result = await setTimerDuration(eventId, command, actor)

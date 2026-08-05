@@ -39,7 +39,7 @@ npm --prefix functions run check
 - `/dashboards/vibecoding-2026` — 공개 수합 대시보드
 - `/exhibitions/vibecoding-2026` — 개인 작품 전시
 
-주최자가 슬라이드의 단계명·제목·질문·도움말을 편집하거나 단계별 타이머(1–180분)·공개 상태를 바꾸면 Cloud Functions가 권한을 검증하고 Firestore를 갱신하며, 연결된 참여자 화면은 실시간 listener로 같은 상태를 받습니다. 슬라이드 텍스트는 0.9초 디바운스로 자동 저장되고 타이머 시간은 슬라이드 기본값으로 유지됩니다.
+주최자는 슬라이드를 새로 만들고 복제·순서 변경·삭제할 수 있으며 단계명·제목·질문·도움말을 실시간 편집할 수 있습니다. 단계별 타이머(1–180분)와 답변·댓글 공개 상태를 바꾸면 Cloud Functions가 권한을 검증하고 Firestore 트랜잭션으로 갱신하며, 연결된 참여자 화면은 실시간 listener로 같은 상태를 받습니다. 슬라이드 텍스트는 0.9초 디바운스로 자동 저장되고 타이머 시간은 슬라이드 기본값으로 유지됩니다. 답변이나 초안이 있는 슬라이드와 타이머가 진행 중인 현재 슬라이드는 기록 보호를 위해 삭제할 수 없습니다.
 첫 타이머를 시작하거나 재개하면 신규 닉네임 등록은 서버에서 마감되고, 기존 참여자의 닉네임·4자리 PIN 재입장은 계속 허용됩니다.
 
 ## 제품 구조
@@ -48,6 +48,7 @@ npm --prefix functions run check
 - Google Drive의 정보 밀도를 참고한 Material Design 3 UI: Google Sans Flex·Noto Sans KR, Material Symbols, 단일 Google Blue와 절제된 중립색 표면
 - 데스크톱 주최자용 좌측 작업공간 내비게이션, 참여자·공개 화면용 상단 내비게이션, 모바일 하단 내비게이션
 - 반응형 주최자 콘솔, 집중형 참여자 화면, 공개 전시 레이아웃
+- 전시 카드 전체 클릭·키보드 열기와 작품 핵심·제작 회고·태그·데모 링크를 보여주는 상세 모달
 - Firebase Authentication: Google 주최자 계정, 이메일 초대 링크와 동일 Google 계정 검증, 익명 사전 인증 후 닉네임·PIN 기반 참여자 custom token
 - Cloud Firestore: 서울 `asia-northeast3`, 운영 메모리 캐시, 실시간 listener
 - Cloud Functions v2: 참여/재입장, 진행 제어, 제출, 댓글, 비공개 검토, 관리자 초대, 발행, PIN 감사 조회

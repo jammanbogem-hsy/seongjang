@@ -106,6 +106,17 @@ export interface SaveSynthesisDraftRequest {
 
 export type FirebaseAuthoritativeCommand =
   | { type: 'SET_ACTIVE_SLIDE'; slideId: string }
+  | {
+      type: 'CREATE_SLIDE'
+      durationSec: number
+      eyebrow: string
+      helper: string
+      illustration: string
+      prompt: string
+      title: string
+    }
+  | { type: 'DELETE_SLIDE'; slideId: string }
+  | { type: 'MOVE_SLIDE'; direction: 'up' | 'down'; slideId: string }
   | { type: 'SET_TIMER_DURATION'; durationSec: number }
   | { type: 'START_TIMER' | 'PAUSE_TIMER' | 'RESUME_TIMER' | 'RESET_TIMER' }
   | { type: 'SET_ANSWERS_REVEALED'; slideId: string; revealed: boolean }

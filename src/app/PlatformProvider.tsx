@@ -197,6 +197,12 @@ function toFirebaseCommand(
       const slide = state.slides[command.slideIndex]
       return slide ? { type: 'SET_ACTIVE_SLIDE', slideId: slide.id } : null
     }
+    case 'CREATE_SLIDE':
+      return { type: command.type, ...command.input }
+    case 'DELETE_SLIDE':
+      return { type: command.type, slideId: command.slideId }
+    case 'MOVE_SLIDE':
+      return { type: command.type, slideId: command.slideId, direction: command.direction }
     case 'SET_TIMER_DURATION':
       return { type: command.type, durationSec: command.durationSec }
     case 'START_TIMER':

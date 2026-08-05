@@ -231,6 +231,130 @@ export function executePlatformCommand(
       )
     }
 
+    case 'CREATE_SLIDE': {
+      if (state.slides.length >= 12) {
+        return error(state, 'NOT_ALLOWED', '슬라이드는 최대 12개까지 만들 수 있어요.')
+      }
+      const { input } = command
+      const eyebrow = input.eyebrow.trim()
+      const title = input.title.trim()
+      const prompt = input.prompt.trim()
+      const helper = input.helper.trim()
+      if (!eyebrow || eyebrow.length > 80 || !title || title.length > 160) {
+        return error(state, 'INVALID_CONTENT', '단계 이름과 슬라이드 제목의 길이를 확인해주세요.')
+      }
+      if (!prompt || prompt.length > 800 || helper.length > 500) {
+        return error(state, 'INVALID_CONTENT', '질문은 800자, 도움말은 500자 이하로 입력해주세요.')
+      }
+      if (!Number.isInteger(input.durationSec) || input.durationSec < 60 || input.durationSec > 10_800) {
+        return error(state, 'INVALID_CONTENT', '타이머는 1분에서 180분 사이로 설정해주세요.')
+      }
+      const illustration = input.illustration.startsWith('/assets/illustrations/')
+        ? input.illustration
+        : '/assets/illustrations/cat-ideation.webp'
+      const created = {
+        id: env.createId('slide'),
+        order: state.slides.length + 1,
+        eyebrow,
+        title,
+        prompt,
+        helper,
+        durationSec: input.durationSec,
+        illustration,
+      }
+      return success(
+        state,
+        {
+          ...state,
+          slides: [...state.slides, created],
+          live: {
+            ...state.live,
+            answersRevealedBySlide: {
+              ...state.live.answersRevealedBySlide,
+              [created.id]: false,
+            },
+            commentsEnabledBySlide: {
+              ...state.live.commentsEnabledBySlide,
+              [created.id]: false,
+            },
+          },
+        },
+        created,
+        '새 슬라이드를 덱 마지막에 추가했어요.',
+      )
+    }
+
+    case 'DELETE_SLIDE': {
+      const deletingIndex = state.slides.findIndex((slide) => slide.id === command.slideId)
+      if (deletingIndex < 0) return error(state, 'NOT_FOUND', '삭제할 슬라이드를 찾을 수 없어요.')
+      if (state.slides.length <= 1) return error(state, 'NOT_ALLOWED', '행사에는 슬라이드가 하나 이상 필요해요.')
+      if (deletingIndex === state.live.activeSlideIndex && state.live.timer.status === 'running') {
+        return error(state, 'NOT_ALLOWED', '진행 중인 슬라이드는 타이머를 일시정지한 뒤 삭제해주세요.')
+      }
+      if (state.answers.some((answer) => answer.slideId === command.slideId)) {
+        return error(state, 'NOT_ALLOWED', '참여자 답변이 있는 슬라이드는 삭제할 수 없어요.')
+      }
+      const previousActiveId = state.slides[state.live.activeSlideIndex]?.id
+      const slides = state.slides
+        .filter((slide) => slide.id !== command.slideId)
+        .map((slide, index) => ({ ...slide, order: index + 1 }))
+      const activeSlideIndex = previousActiveId === command.slideId
+        ? Math.min(deletingIndex, slides.length - 1)
+        : Math.max(0, slides.findIndex((slide) => slide.id === previousActiveId))
+      const activeSlide = slides[activeSlideIndex]
+      const answersRevealedBySlide = { ...state.live.answersRevealedBySlide }
+      const commentsEnabledBySlide = { ...state.live.commentsEnabledBySlide }
+      delete answersRevealedBySlide[command.slideId]
+      delete commentsEnabledBySlide[command.slideId]
+      return success(
+        state,
+        {
+          ...state,
+          slides,
+          live: {
+            ...state.live,
+            activeSlideIndex,
+            answersRevealedBySlide,
+            commentsEnabledBySlide,
+            timer: previousActiveId === command.slideId
+              ? {
+                  durationSec: activeSlide.durationSec,
+                  remainingSec: activeSlide.durationSec,
+                  status: 'idle',
+                  endsAt: null,
+                }
+              : state.live.timer,
+          },
+        },
+        command.slideId,
+        '슬라이드를 삭제하고 순서를 다시 정리했어요.',
+      )
+    }
+
+    case 'MOVE_SLIDE': {
+      const sourceIndex = state.slides.findIndex((slide) => slide.id === command.slideId)
+      if (sourceIndex < 0) return error(state, 'NOT_FOUND', '이동할 슬라이드를 찾을 수 없어요.')
+      const targetIndex = sourceIndex + (command.direction === 'up' ? -1 : 1)
+      if (!state.slides[targetIndex]) return error(state, 'NOT_ALLOWED', '슬라이드를 더 이동할 수 없어요.')
+      const activeSlideId = state.slides[state.live.activeSlideIndex]?.id
+      const reordered = [...state.slides]
+      ;[reordered[sourceIndex], reordered[targetIndex]] = [reordered[targetIndex], reordered[sourceIndex]]
+      const slides = reordered.map((slide, index) => ({ ...slide, order: index + 1 }))
+      return success(
+        state,
+        {
+          ...state,
+          slides,
+          live: {
+            ...state.live,
+            activeSlideIndex: Math.max(0, slides.findIndex((slide) => slide.id === activeSlideId)),
+          },
+        },
+        command.slideId,
+        '슬라이드 순서를 변경했어요.',
+      )
+    }
+
     case 'SET_ACTIVE_SLIDE': {
       if (!Number.isInteger(command.slideIndex) || !state.slides[command.slideIndex]) {
         return error(state, 'NOT_FOUND', '해당 슬라이드를 찾을 수 없어요.')

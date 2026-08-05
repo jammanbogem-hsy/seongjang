@@ -11,8 +11,10 @@ import { usePlatform } from '../app/PlatformProvider'
 import { createEmbedSnippet, createTextExport, type ExportFormat } from '../domain/exports'
 import type {
   Answer,
+  CreateSlideInput,
   Participant,
   PublicProject,
+  Slide,
   Submission,
   UpdateSlideInput,
   UpdateSynthesisInput,
@@ -338,6 +340,15 @@ export function ParticipantLivePage() {
   const stageAnswers = state.answers.filter(
     (answer) => answer.slideId === currentSlide.id && answer.status === 'submitted',
   )
+  const ownAnswerIds = new Set(state.answers
+    .filter((answer) => answer.participantId === currentParticipant?.id && answer.status === 'submitted')
+    .map((answer) => answer.id))
+  const organizerFeedbackCount = state.reviewThreads.filter(
+    (thread) => thread.targetType === 'answer' && ownAnswerIds.has(thread.targetId),
+  ).length
+  const ownCommentCount = state.comments.filter(
+    (comment) => comment.participantId === currentParticipant?.id,
+  ).length
   const ownAnswer = currentParticipant
     ? state.answers.find(
         (answer) => answer.participantId === currentParticipant.id && answer.slideId === currentSlide.id,
@@ -568,6 +579,17 @@ export function ParticipantLivePage() {
         progress={{ current: currentSlide.order, total: state.slides.length, label: `${currentSlide.order} / ${state.slides.length} 단계 · 주최자와 동기화` }}
         title={currentSlide.title}
       >
+        <Card className="session-connection-bar" padding="md" tone="subtle">
+          <div>
+            <StatusChip label="주최자 세션과 실시간 연결" status="live" />
+            <p>현재 질문에 답하면 주최자 콘솔로 전송되고, 공개 토론과 비공개 피드백은 이 세션에서 이어집니다.</p>
+          </div>
+          <div className="chip-row">
+            <Chip icon="check_circle" tone="success">내 제출 {ownAnswerIds.size}개</Chip>
+            <Chip icon="rate_review" tone={organizerFeedbackCount ? 'warning' : 'neutral'}>주최자 피드백 {organizerFeedbackCount}개</Chip>
+            <Chip icon="forum" tone="neutral">내 댓글 {ownCommentCount}개</Chip>
+          </div>
+        </Card>
         <section aria-live="polite" className="participant-stage">
           <header className="participant-stage-head">
             <span><span className="live-dot" /> LIVE QUESTION</span>
@@ -990,6 +1012,18 @@ export function OrganizerControlPage() {
   currentSlideRef.current = currentSlide
   const { notify, renderToasts } = useNotices()
   const [reviewAnswerId, setReviewAnswerId] = useState<string | null>(null)
+  const [createSlideOpen, setCreateSlideOpen] = useState(false)
+  const [creatingSlide, setCreatingSlide] = useState(false)
+  const [deleteSlideTarget, setDeleteSlideTarget] = useState<Slide | null>(null)
+  const [deletingSlide, setDeletingSlide] = useState(false)
+  const [createSlideDraft, setCreateSlideDraft] = useState<CreateSlideInput>({
+    eyebrow: 'NEW STEP · 10분',
+    title: '',
+    prompt: '',
+    helper: '',
+    durationSec: 600,
+    illustration: '/assets/illustrations/cat-ideation.webp',
+  })
   const [durationMinutes, setDurationMinutes] = useState(() => String(Math.round(currentSlide.durationSec / 60)))
   const [slideEditorOpen, setSlideEditorOpen] = useState(false)
   const [slideDraft, setSlideDraft] = useState<UpdateSlideInput>(() => ({
@@ -1101,6 +1135,61 @@ export function OrganizerControlPage() {
 
   function updateSlideDraft(field: Exclude<keyof UpdateSlideInput, 'slideId'>, value: string) {
     setSlideDraft((current) => ({ ...current, [field]: value }))
+  }
+
+  function updateCreateSlideDraft<K extends keyof CreateSlideInput>(field: K, value: CreateSlideInput[K]) {
+    setCreateSlideDraft((current) => ({ ...current, [field]: value }))
+  }
+
+  function openCreateSlide() {
+    const minutes = 10
+    setCreateSlideDraft({
+      eyebrow: `NEW STEP · ${minutes}분`,
+      title: '',
+      prompt: '',
+      helper: '',
+      durationSec: minutes * 60,
+      illustration: '/assets/illustrations/cat-ideation.webp',
+    })
+    setCreateSlideOpen(true)
+  }
+
+  async function createSlide() {
+    setCreatingSlide(true)
+    const result = await dispatchAsync<Slide>({ type: 'CREATE_SLIDE', input: createSlideDraft })
+    const ok = announceResult(result, notify)
+    setCreatingSlide(false)
+    if (ok) setCreateSlideOpen(false)
+  }
+
+  async function duplicateSlide(slide: Slide) {
+    const suffix = ' 복사본'
+    const title = `${slide.title.slice(0, 160 - suffix.length)}${suffix}`
+    announceResult(
+      await dispatchAsync<Slide>({
+        type: 'CREATE_SLIDE',
+        input: {
+          eyebrow: slide.eyebrow,
+          title,
+          prompt: slide.prompt,
+          helper: slide.helper,
+          durationSec: slide.durationSec,
+          illustration: slide.illustration,
+        },
+      }),
+      notify,
+    )
+  }
+
+  async function deleteSlide() {
+    if (!deleteSlideTarget) return
+    setDeletingSlide(true)
+    const ok = announceResult(
+      await dispatchAsync({ type: 'DELETE_SLIDE', slideId: deleteSlideTarget.id }),
+      notify,
+    )
+    setDeletingSlide(false)
+    if (ok) setDeleteSlideTarget(null)
   }
 
   async function applyTimerDuration(minutes = Number(durationMinutes)) {
@@ -1222,18 +1311,31 @@ export function OrganizerControlPage() {
         </div>
 
         <Card padding="lg">
-          <SectionHeader description="항목을 선택하면 모든 참여자 화면이 같은 단계로 이동합니다." eyebrow="DECK · 4 STEPS" title="진행 슬라이드" />
+          <SectionHeader
+            actions={<Button disabled={state.slides.length >= 12} leadingIcon="add" onClick={openCreateSlide} variant="tonal">새 슬라이드</Button>}
+            description="질문 페이지를 만들고 순서를 정리한 뒤, 페이지를 선택하면 모든 참여자 화면이 함께 이동합니다."
+            eyebrow={`DECK · ${state.slides.length} PAGES`}
+            title="진행 슬라이드"
+          />
           <div className="slide-list">
             {state.slides.map((slide, index) => {
               const count = state.answers.filter((answer) => answer.slideId === slide.id && answer.status === 'submitted').length
               const active = index === state.live.activeSlideIndex
               return (
-                <button className={`slide-item${active ? ' active' : ''}`} key={slide.id} onClick={() => run({ type: 'SET_ACTIVE_SLIDE', slideIndex: index })} type="button">
-                  <span className="slide-index">{String(slide.order).padStart(2, '0')}</span>
-                  <span className="list-main"><span className="list-title">{slide.title}</span><span className="list-subtitle">{Math.round(slide.durationSec / 60)}분 · 답변 {count}개</span></span>
-                  <Chip tone={state.live.answersRevealedBySlide[slide.id] ? 'success' : 'neutral'}>{state.live.answersRevealedBySlide[slide.id] ? '공개' : '비공개'}</Chip>
-                  <Icon name={active ? 'sensors' : 'chevron_right'} />
-                </button>
+                <div className={`slide-item${active ? ' active' : ''}`} key={slide.id}>
+                  <button className="slide-item__main" onClick={() => run({ type: 'SET_ACTIVE_SLIDE', slideIndex: index })} type="button">
+                    <span className="slide-index">{String(slide.order).padStart(2, '0')}</span>
+                    <span className="list-main"><span className="list-title">{slide.title}</span><span className="list-subtitle">{Math.round(slide.durationSec / 60)}분 · 답변 {count}개</span></span>
+                    <Chip tone={state.live.answersRevealedBySlide[slide.id] ? 'success' : 'neutral'}>{state.live.answersRevealedBySlide[slide.id] ? '공개' : '비공개'}</Chip>
+                    <Icon name={active ? 'sensors' : 'chevron_right'} />
+                  </button>
+                  <div aria-label={`${slide.order}단계 편집 메뉴`} className="slide-item__actions">
+                    <IconButton disabled={index === 0} icon="arrow_upward" label={`${slide.order}단계 앞으로 이동`} onClick={() => run({ type: 'MOVE_SLIDE', slideId: slide.id, direction: 'up' })} />
+                    <IconButton disabled={index === state.slides.length - 1} icon="arrow_downward" label={`${slide.order}단계 뒤로 이동`} onClick={() => run({ type: 'MOVE_SLIDE', slideId: slide.id, direction: 'down' })} />
+                    <IconButton disabled={state.slides.length >= 12} icon="content_copy" label={`${slide.order}단계 복제`} onClick={() => { void duplicateSlide(slide) }} />
+                    <IconButton icon="delete" label={`${slide.order}단계 삭제`} onClick={() => setDeleteSlideTarget(slide)} />
+                  </div>
+                </div>
               )
             })}
           </div>
@@ -1332,6 +1434,96 @@ export function OrganizerControlPage() {
           />
           <AutosaveStatus phase={slideAutosavePhase} savedAt={slideAutosavedAt} />
         </div>
+      </Dialog>
+      <Dialog
+        actions={(
+          <>
+            <Button disabled={creatingSlide} onClick={() => setCreateSlideOpen(false)} variant="text">취소</Button>
+            <Button
+              disabled={
+                !createSlideDraft.eyebrow.trim()
+                || !createSlideDraft.title.trim()
+                || !createSlideDraft.prompt.trim()
+                || !Number.isInteger(createSlideDraft.durationSec / 60)
+                || createSlideDraft.durationSec < 60
+                || createSlideDraft.durationSec > 10_800
+              }
+              leadingIcon="add"
+              loading={creatingSlide}
+              onClick={() => { void createSlide() }}
+            >슬라이드 추가</Button>
+          </>
+        )}
+        description="새 페이지는 덱 마지막에 추가되며, 직접 선택하기 전까지 참여자의 현재 화면은 바뀌지 않습니다."
+        onClose={() => setCreateSlideOpen(false)}
+        open={createSlideOpen}
+        size="lg"
+        title="새 슬라이드 만들기"
+      >
+        <div className="form-grid slide-editor-form">
+          <div className="grid two">
+            <Field label="단계 이름" maxLength={80} onChange={(event) => updateCreateSlideDraft('eyebrow', event.target.value)} required value={createSlideDraft.eyebrow} />
+            <Field
+              label="기본 시간 (분)"
+              max={180}
+              min={1}
+              onChange={(event) => {
+                const minutes = Number(event.target.value)
+                setCreateSlideDraft((current) => ({
+                  ...current,
+                  durationSec: Number.isFinite(minutes) ? minutes * 60 : 0,
+                  eyebrow: current.eyebrow.replace(/·\s*\d+\s*분\s*$/u, `· ${minutes}분`),
+                }))
+              }}
+              required
+              type="number"
+              value={createSlideDraft.durationSec / 60}
+            />
+          </div>
+          <Field label="슬라이드 제목" maxLength={160} onChange={(event) => updateCreateSlideDraft('title', event.target.value)} required value={createSlideDraft.title} />
+          <Textarea label="참여자 질문" maxLength={800} onChange={(event) => updateCreateSlideDraft('prompt', event.target.value)} required rows={5} showCount value={createSlideDraft.prompt} />
+          <Textarea helpText="참여자가 답변을 작성할 때 함께 보는 안내입니다." label="작성 도움말" maxLength={500} onChange={(event) => updateCreateSlideDraft('helper', event.target.value)} rows={3} showCount value={createSlideDraft.helper} />
+          <Select label="고양이 삽화" onChange={(event) => updateCreateSlideDraft('illustration', event.target.value)} value={createSlideDraft.illustration}>
+            <option value="/assets/illustrations/cat-ideation.webp">아이디어 고양이</option>
+            <option value="/assets/illustrations/cat-lobby.webp">참여 고양이</option>
+            <option value="/assets/illustrations/cat-timer.webp">집중 고양이</option>
+            <option value="/assets/illustrations/cat-submission.webp">완성 고양이</option>
+          </Select>
+        </div>
+      </Dialog>
+      <Dialog
+        actions={(
+          <>
+            <Button disabled={deletingSlide} onClick={() => setDeleteSlideTarget(null)} variant="text">취소</Button>
+            <Button
+              disabled={
+                Boolean(deleteSlideTarget && state.answers.some((answer) => answer.slideId === deleteSlideTarget.id))
+                || Boolean(deleteSlideTarget && deleteSlideTarget.id === currentSlide.id && timerView.status === 'running')
+                || state.slides.length <= 1
+              }
+              leadingIcon="delete"
+              loading={deletingSlide}
+              onClick={() => { void deleteSlide() }}
+              variant="danger"
+            >슬라이드 삭제</Button>
+          </>
+        )}
+        description="답변이 한 번이라도 저장된 슬라이드는 참여자 기록 보호를 위해 삭제할 수 없습니다."
+        onClose={() => setDeleteSlideTarget(null)}
+        open={Boolean(deleteSlideTarget)}
+        size="sm"
+        title={`${deleteSlideTarget?.order ?? ''}단계 슬라이드를 삭제할까요?`}
+      >
+        {deleteSlideTarget ? (
+          <OutcomeNote tone="warm">
+            <strong>{deleteSlideTarget.title}</strong><br />
+            {state.answers.some((answer) => answer.slideId === deleteSlideTarget.id)
+              ? '이 페이지에는 참여자 답변이 있어 삭제할 수 없습니다.'
+              : deleteSlideTarget.id === currentSlide.id && timerView.status === 'running'
+                ? '현재 진행 중인 페이지입니다. 타이머를 일시정지한 뒤 삭제해주세요.'
+              : '삭제하면 남은 슬라이드 번호가 자동으로 다시 정렬됩니다.'}
+          </OutcomeNote>
+        ) : null}
       </Dialog>
       {renderToasts()}
     </OrganizerShell>
@@ -2080,14 +2272,20 @@ function ProjectCard({
   reviewCount?: number
 }) {
   return (
-    <article className="card project-card interactive">
-      {onOpen ? (
-        <button aria-label={`${project.title} 상세 보기`} className="project-cover" onClick={onOpen} type="button">
-          <img alt="" src={project.coverImage} />
-        </button>
-      ) : (
-        <div className="project-cover"><img alt="" src={project.coverImage} /></div>
-      )}
+    <article
+      aria-label={onOpen ? `${project.title} 상세 보기` : undefined}
+      className={`card project-card interactive${onOpen ? ' project-card--openable' : ''}`}
+      onClick={onOpen}
+      onKeyDown={onOpen ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onOpen()
+        }
+      } : undefined}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+    >
+      <div className="project-cover"><img alt="" src={project.coverImage} /></div>
       <div className="project-content">
         <span className="eyebrow">MADE BY {maker}</span>
         <h2>{project.title}</h2>
@@ -2095,7 +2293,7 @@ function ProjectCard({
         <div className="chip-row">{project.tags.slice(0, 3).map((tag) => <Chip key={tag}>{tag}</Chip>)}</div>
         {onOpen || onReview ? (
           <div className="project-card__actions">
-            {onOpen ? <Button fullWidth onClick={onOpen} size="sm" variant="text">작품 이야기 보기</Button> : null}
+            {onOpen ? <span className="project-card__open"><Icon name="open_in_full" size="sm" /> 작품 상세 보기</span> : null}
             {onReview ? (
               <Button leadingIcon="rate_review" onClick={onReview} size="sm" variant="tonal">
                 검토 {reviewCount ? reviewCount : ''}
@@ -2153,12 +2351,41 @@ export function ExhibitionPage() {
 
       <Dialog
         actions={selected ? <><Button onClick={closeProject} variant="text">닫기</Button>{selected.githubUrl ? <Button leadingIcon="code" onClick={() => window.open(selected.githubUrl, '_blank', 'noopener,noreferrer')} variant="outlined">GitHub</Button> : null}{selected.demoUrl ? <Button leadingIcon="arrow_outward" onClick={() => window.open(selected.demoUrl, '_blank', 'noopener,noreferrer')}>데모 열기</Button> : null}</> : undefined}
+        description={selected ? `${selected.maker.name}님의 개인 프로젝트 전시` : undefined}
         onClose={closeProject}
         open={Boolean(selected)}
         size="lg"
         title={selected?.title ?? '작품 상세'}
       >
-        {selected ? <div className="project-detail"><img alt={`${selected.title} 대표 이미지`} src={selected.coverImage} /><div><Chip tone="primary">{selected.maker.name}의 개인 작품</Chip><p className="project-pitch">{selected.pitch}</p><p>{selected.description}</p><h3>제작 회고</h3><blockquote>{selected.retrospective}</blockquote><div className="chip-row">{selected.tags.map((tag) => <Chip key={tag}>{tag}</Chip>)}</div></div></div> : null}
+        {selected ? (
+          <div className="project-detail">
+            <div className="project-detail__visual">
+              <img alt={`${selected.title} 대표 이미지`} src={selected.coverImage} />
+              <div className="project-detail__availability">
+                <Chip icon="person" tone="primary">{selected.maker.name}의 개인 작품</Chip>
+                {selected.demoUrl ? <Chip icon="play_circle" tone="success">실행 가능한 데모</Chip> : null}
+                {selected.githubUrl ? <Chip icon="code" tone="neutral">소스 공개</Chip> : null}
+              </div>
+            </div>
+            <div className="project-detail__story">
+              <p className="project-pitch">{selected.pitch}</p>
+              <div className="project-feature-list">
+                <section>
+                  <span className="project-feature-list__icon"><Icon filled name="lightbulb" /></span>
+                  <div><h3>작품의 핵심</h3><p>{selected.description}</p></div>
+                </section>
+                <section>
+                  <span className="project-feature-list__icon"><Icon name="history_edu" /></span>
+                  <div><h3>만든 사람의 기록</h3><blockquote>{selected.retrospective}</blockquote></div>
+                </section>
+                <section>
+                  <span className="project-feature-list__icon"><Icon name="sell" /></span>
+                  <div><h3>작품의 특징</h3><div className="chip-row">{selected.tags.length ? selected.tags.map((tag) => <Chip key={tag}>{tag}</Chip>) : <Chip>개인 프로젝트</Chip>}</div></div>
+                </section>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </Dialog>
     </PublicShell>
   )

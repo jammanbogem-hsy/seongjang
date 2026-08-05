@@ -356,10 +356,22 @@ export interface UpdateSlideInput {
   helper: string
 }
 
+export interface CreateSlideInput {
+  eyebrow: string
+  title: string
+  prompt: string
+  helper: string
+  durationSec: number
+  illustration: string
+}
+
 export type PlatformCommand =
   | { type: 'JOIN_PARTICIPANT'; input: JoinParticipantInput }
   | { type: 'SET_PARTICIPANT_STATUS'; participantId: Identifier; status: ParticipantStatus }
   | { type: 'SET_ACTIVE_SLIDE'; slideIndex: number }
+  | { type: 'CREATE_SLIDE'; input: CreateSlideInput }
+  | { type: 'DELETE_SLIDE'; slideId: Identifier }
+  | { type: 'MOVE_SLIDE'; slideId: Identifier; direction: 'up' | 'down' }
   | { type: 'SET_TIMER_DURATION'; durationSec: number }
   | { type: 'START_TIMER' }
   | { type: 'PAUSE_TIMER' }

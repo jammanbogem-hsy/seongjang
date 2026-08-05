@@ -114,6 +114,52 @@ describe('live controls', () => {
       helper: '답변은 자동 저장됩니다.',
     })
   })
+
+  it('creates, reorders and deletes an unanswered slide while preserving the live page', () => {
+    const seed = createSeedState()
+    const activeSlideId = seed.slides[seed.live.activeSlideIndex].id
+    const created = executePlatformCommand(seed, {
+      type: 'CREATE_SLIDE',
+      input: {
+        eyebrow: 'TEST · 7분',
+        title: '새로운 검증 질문',
+        prompt: '참여자에게 실시간으로 보일 질문입니다.',
+        helper: '개인 답변을 입력해주세요.',
+        durationSec: 420,
+        illustration: '/assets/illustrations/cat-ideation.webp',
+      },
+    }, env)
+
+    expect(created.result.ok).toBe(true)
+    expect(created.state.slides.at(-1)).toMatchObject({ id: 'slide-test', order: seed.slides.length + 1 })
+    expect(created.state.live.answersRevealedBySlide['slide-test']).toBe(false)
+
+    const moved = executePlatformCommand(
+      created.state,
+      { type: 'MOVE_SLIDE', slideId: 'slide-test', direction: 'up' },
+      env,
+    )
+    expect(moved.result.ok).toBe(true)
+    expect(moved.state.slides.at(-2)?.id).toBe('slide-test')
+    expect(moved.state.slides[moved.state.live.activeSlideIndex].id).toBe(activeSlideId)
+
+    const deleted = executePlatformCommand(moved.state, { type: 'DELETE_SLIDE', slideId: 'slide-test' }, env)
+    expect(deleted.result.ok).toBe(true)
+    expect(deleted.state.slides).toHaveLength(seed.slides.length)
+    expect(deleted.state.slides[moved.state.live.activeSlideIndex].id).toBe(activeSlideId)
+  })
+
+  it('protects participant records and an actively running slide from deletion', () => {
+    const seed = createSeedState()
+    const answeredSlideId = seed.answers[0].slideId
+    const answered = executePlatformCommand(seed, { type: 'DELETE_SLIDE', slideId: answeredSlideId }, env)
+    expect(answered.result).toMatchObject({ ok: false, error: { code: 'NOT_ALLOWED' } })
+
+    const started = executePlatformCommand(seed, { type: 'START_TIMER' }, env)
+    const activeSlideId = started.state.slides[started.state.live.activeSlideIndex].id
+    const running = executePlatformCommand(started.state, { type: 'DELETE_SLIDE', slideId: activeSlideId }, env)
+    expect(running.result).toMatchObject({ ok: false, error: { code: 'NOT_ALLOWED' } })
+  })
 })
 
 describe('autosave semantics', () => {
