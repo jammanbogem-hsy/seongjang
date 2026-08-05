@@ -8,6 +8,9 @@ export type AnswerStatus = 'draft' | 'submitted'
 export type SubmissionStatus = 'draft' | 'submitted'
 export type InvitationStatus = 'pending' | 'accepted'
 export type NicknamePolicy = 'nickname' | 'anonymous'
+export type ReviewTargetType = 'answer' | 'submission'
+export type ReviewAuthorRole = 'organizer' | 'participant'
+export type ReviewThreadStatus = 'open' | 'resolved'
 
 export interface Room {
   id: Identifier
@@ -81,6 +84,28 @@ export interface Comment {
   body: string
   createdAt: string
   updatedAt: string
+}
+
+export interface ReviewMessage {
+  id: Identifier
+  authorRole: ReviewAuthorRole
+  participantId: Identifier | null
+  body: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ReviewThread {
+  id: Identifier
+  targetType: ReviewTargetType
+  targetId: Identifier
+  field: string
+  quote: string
+  status: ReviewThreadStatus
+  messages: ReviewMessage[]
+  createdAt: string
+  updatedAt: string
+  resolvedAt: string | null
 }
 
 export interface Theme {
@@ -206,6 +231,7 @@ export interface PrototypeState {
   live: LiveSession
   answers: Answer[]
   comments: Comment[]
+  reviewThreads: ReviewThread[]
   themes: Theme[]
   submissions: Submission[]
   synthesis: Synthesis
@@ -271,6 +297,28 @@ export interface DeleteCommentInput {
   commentId: Identifier
 }
 
+export interface AddReviewThreadInput {
+  targetType: ReviewTargetType
+  targetId: Identifier
+  field: string
+  quote?: string
+  body: string
+}
+
+export interface AddReviewReplyInput {
+  threadId: Identifier
+  authorRole: ReviewAuthorRole
+  participantId?: Identifier
+  body: string
+}
+
+export interface SetReviewThreadStatusInput {
+  threadId: Identifier
+  authorRole: ReviewAuthorRole
+  participantId?: Identifier
+  status: ReviewThreadStatus
+}
+
 export interface SubmitProjectInput {
   participantId: Identifier
   title: string
@@ -305,6 +353,9 @@ export type PlatformCommand =
   | { type: 'ADD_COMMENT'; input: AddCommentInput }
   | { type: 'UPDATE_COMMENT'; input: UpdateCommentInput }
   | { type: 'DELETE_COMMENT'; input: DeleteCommentInput }
+  | { type: 'ADD_REVIEW_THREAD'; input: AddReviewThreadInput }
+  | { type: 'ADD_REVIEW_REPLY'; input: AddReviewReplyInput }
+  | { type: 'SET_REVIEW_THREAD_STATUS'; input: SetReviewThreadStatusInput }
   | { type: 'SUBMIT_PROJECT'; input: SubmitProjectInput }
   | { type: 'INVITE_ADMIN'; email: string }
   | { type: 'ACCEPT_ADMIN_INVITE'; inviteId: Identifier }

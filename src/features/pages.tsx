@@ -9,8 +9,11 @@ import { usePlatform } from '../app/PlatformProvider'
 import { createEmbedSnippet, createTextExport, type ExportFormat } from '../domain/exports'
 import type { Answer, Participant, PublicProject, Submission } from '../domain/models'
 import { downloadTextExport } from '../platform/download'
+import { useAutosave } from '../platform/useAutosave'
+import { usePersistentDraft } from '../platform/usePersistentDraft'
 import { AdminLayout, ParticipantLayout } from '../layouts'
 import {
+  AutosaveStatus,
   Button,
   Card,
   CatIllustration,
@@ -26,8 +29,10 @@ import {
   Select,
   StatCard,
   StatusChip,
+  Switch,
   Textarea,
 } from '../ui'
+import { ReviewThreadsPanel } from './ReviewThreads'
 import {
   EVENT_ID,
   PUBLIC_SLUG,
@@ -272,9 +277,20 @@ export function ParticipantLivePage() {
     timerView,
   } = usePlatform()
   const { notify, renderToasts } = useNotices()
-  const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({})
+  const [answerDrafts, setAnswerDrafts] = usePersistentDraft<Record<string, string>>(
+    `vibecoding.answer-drafts.${currentParticipant?.id ?? 'guest'}`,
+    {},
+  )
   const [commentTarget, setCommentTarget] = useState<string | null>(null)
-  const [commentText, setCommentText] = useState('')
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [commentDrafts, setCommentDrafts] = usePersistentDraft<Record<string, string>>(
+    `vibecoding.comment-drafts.${currentParticipant?.id ?? 'guest'}`,
+    {},
+  )
+  const [commentEditDrafts, setCommentEditDrafts] = usePersistentDraft<Record<string, string>>(
+    `vibecoding.comment-edit-drafts.${currentParticipant?.id ?? 'guest'}`,
+    {},
+  )
   const revealed = Boolean(state.live.answersRevealedBySlide[currentSlide.id])
   const commentsEnabled = Boolean(state.live.commentsEnabledBySlide[currentSlide.id])
   const stageAnswers = state.answers.filter(
@@ -286,6 +302,32 @@ export function ParticipantLivePage() {
       )
     : undefined
   const answerText = answerDrafts[currentSlide.id] ?? ownAnswer?.content ?? ''
+  const commentText = commentTarget ? (commentDrafts[commentTarget] ?? '') : ''
+  const editingComment = state.comments.find((comment) => comment.id === editingCommentId)
+  const editingCommentText = editingCommentId
+    ? (commentEditDrafts[editingCommentId] ?? editingComment?.body ?? '')
+    : ''
+  const answerAutosave = useAutosave({
+    enabled: Boolean(
+      currentParticipant &&
+      answerText.trim() &&
+      !revealed &&
+      timerView.status !== 'complete'
+    ),
+    fingerprint: `${currentSlide.id}:${answerText}`,
+    save: () => {
+      if (!currentParticipant || !answerText.trim()) return false
+      return dispatch({
+        type: 'SAVE_ANSWER',
+        input: {
+          participantId: currentParticipant.id,
+          slideId: currentSlide.id,
+          content: answerText,
+          submit: false,
+        },
+      }).ok
+    },
+  })
 
   if (!currentParticipant) {
     return (
@@ -317,6 +359,7 @@ export function ParticipantLivePage() {
       notify,
     )
     if (ok) {
+      answerAutosave.markSaved()
       setAnswerDrafts((current) => {
         if (!(currentSlide.id in current)) return current
         const next = { ...current }
@@ -337,8 +380,31 @@ export function ParticipantLivePage() {
       notify,
     )
     if (ok) {
-      setCommentText('')
+      setCommentDrafts((current) => {
+        const next = { ...current }
+        delete next[commentTarget]
+        return next
+      })
       setCommentTarget(null)
+    }
+  }
+
+  function saveEditedComment() {
+    if (!editingCommentId) return
+    const ok = announceResult(
+      dispatch({
+        type: 'UPDATE_COMMENT',
+        input: { participantId: participant.id, commentId: editingCommentId, body: editingCommentText },
+      }),
+      notify,
+    )
+    if (ok) {
+      setCommentEditDrafts((current) => {
+        const next = { ...current }
+        delete next[editingCommentId]
+        return next
+      })
+      setEditingCommentId(null)
     }
   }
 
@@ -347,7 +413,7 @@ export function ParticipantLivePage() {
       <ParticipantLayout
         aside={
           <Card className="participant-side-card" padding="md" tone="subtle">
-            <CatIllustration decorative size="md" variant={revealed ? 'ideation' : 'timer'} />
+            <CatIllustration decorative size="md" variant={revealed ? 'comment' : timerView.status === 'complete' ? 'deadline' : 'focus'} />
             <strong>{revealed ? '서로의 생각을 읽는 시간' : '지금은 나의 답에 집중'}</strong>
             <p>{revealed ? '공개된 답변에 댓글로 맥락을 더해보세요.' : '제출 전까지 다른 사람의 답변은 보이지 않아요.'}</p>
           </Card>
@@ -368,7 +434,7 @@ export function ParticipantLivePage() {
               <div className="stack">
                 <Textarea
                   disabled={timerView.status === 'complete'}
-                  helpText={ownAnswer ? `마지막 저장 · ${new Date(ownAnswer.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : '이 답변은 공개 전까지 나와 관리자만 볼 수 있어요.'}
+                  helpText={<AutosaveStatus phase={answerAutosave.phase} savedAt={answerAutosave.savedAt} />}
                   label="나의 개인 답변"
                   maxLength={1200}
                   onChange={(event) => setAnswerDrafts((current) => ({
@@ -385,7 +451,7 @@ export function ParticipantLivePage() {
                     <Chip icon="lock" tone="info">공개 전 비공개</Chip>
                     {ownAnswer?.status === 'submitted' ? <Chip icon="check_circle" tone="success">제출됨</Chip> : null}
                   </span>
-                  <MascotAction compactOnly label="좋아요, 이제 제출해요!" variant="ideation">
+                  <MascotAction compactOnly label="입력 내용은 자동 저장하고 있어요" variant="autosave">
                     <Button disabled={!answerText.trim() || timerView.status === 'complete'} onClick={() => saveAnswer(false)} variant="text">임시 저장</Button>
                     <Button disabled={!answerText.trim() || timerView.status === 'complete'} leadingIcon="send" onClick={() => saveAnswer(true)}>개인 답변 제출</Button>
                   </MascotAction>
@@ -400,6 +466,18 @@ export function ParticipantLivePage() {
             )}
           </div>
         </section>
+
+        {ownAnswer ? (
+          <ReviewThreadsPanel
+            fieldOptions={[{ label: '단계 답변', value: '단계 답변' }]}
+            mode="participant"
+            participantId={participant.id}
+            quote={ownAnswer.content}
+            targetId={ownAnswer.id}
+            targetType="answer"
+            title="주최자 피드백"
+          />
+        ) : null}
 
         {revealed ? (
           <section className="stack" aria-label="공개된 답변">
@@ -431,8 +509,11 @@ export function ParticipantLivePage() {
                                   <button
                                     className="text-action"
                                     onClick={() => {
-                                      const body = window.prompt('댓글 수정', comment.body)
-                                      if (body !== null) announceResult(dispatch({ type: 'UPDATE_COMMENT', input: { participantId: currentParticipant.id, commentId: comment.id, body } }), notify)
+                                      setCommentEditDrafts((current) => ({
+                                        ...current,
+                                        [comment.id]: current[comment.id] ?? comment.body,
+                                      }))
+                                      setEditingCommentId(comment.id)
                                     }}
                                     type="button"
                                   >수정</button>
@@ -465,7 +546,11 @@ export function ParticipantLivePage() {
                         autoFocus
                         label="댓글"
                         maxLength={500}
-                        onChange={(event) => setCommentText(event.target.value)}
+                        helpText="등록 전 작성 내용은 이 기기에 자동 저장됩니다."
+                        onChange={(event) => setCommentDrafts((current) => ({
+                          ...current,
+                          [answer.id]: event.target.value,
+                        }))}
                         placeholder="맥락을 더하는 댓글을 남겨주세요."
                         value={commentText}
                       />
@@ -487,6 +572,30 @@ export function ParticipantLivePage() {
           </div>
         )}
       </ParticipantLayout>
+      <Dialog
+        actions={(
+          <>
+            <Button onClick={() => setEditingCommentId(null)} variant="text">취소</Button>
+            <Button disabled={!editingCommentText.trim()} leadingIcon="save" onClick={saveEditedComment}>수정 저장</Button>
+          </>
+        )}
+        description="작성 중인 수정 내용은 이 기기에 자동 저장됩니다."
+        onClose={() => setEditingCommentId(null)}
+        open={Boolean(editingComment)}
+        size="sm"
+        title="댓글 수정"
+      >
+        <Textarea
+          label="댓글"
+          maxLength={500}
+          onChange={(event) => {
+            if (!editingCommentId) return
+            setCommentEditDrafts((current) => ({ ...current, [editingCommentId]: event.target.value }))
+          }}
+          rows={4}
+          value={editingCommentText}
+        />
+      </Dialog>
       {renderToasts()}
     </ParticipantShell>
   )
@@ -497,7 +606,9 @@ export function SubmissionPage() {
   const { currentParticipant, dispatch, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
   const existing = state.submissions.find((submission) => submission.participantId === currentParticipant?.id)
-  const [form, setForm] = useState(() => ({
+  const [form, setForm] = usePersistentDraft(
+    `vibecoding.project-draft.${currentParticipant?.id ?? 'guest'}`,
+    {
     title: existing?.title ?? '',
     pitch: existing?.pitch ?? '',
     description: existing?.description ?? '',
@@ -505,20 +616,26 @@ export function SubmissionPage() {
     githubUrl: existing?.githubUrl ?? '',
     tags: existing?.tags.join(', ') ?? '',
     retrospective: existing?.retrospective ?? '',
-  }))
+    },
+  )
 
-  useEffect(() => {
-    if (!currentParticipant) return
-    setForm({
-      title: existing?.title ?? '',
-      pitch: existing?.pitch ?? '',
-      description: existing?.description ?? '',
-      demoUrl: existing?.demoUrl ?? '',
-      githubUrl: existing?.githubUrl ?? '',
-      tags: existing?.tags.join(', ') ?? '',
-      retrospective: existing?.retrospective ?? '',
-    })
-  }, [currentParticipant, existing])
+  const projectAutosave = useAutosave({
+    enabled: Boolean(currentParticipant && Object.values(form).some((value) => value.trim())),
+    fingerprint: JSON.stringify(form),
+    save: () => {
+      if (!currentParticipant) return false
+      return dispatch<Submission>({
+        type: 'SUBMIT_PROJECT',
+        input: {
+          participantId: currentParticipant.id,
+          ...form,
+          tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+          coverImage: '/assets/illustrations/cat-submission.png',
+          submit: false,
+        },
+      }).ok
+    },
+  })
 
   function update(name: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [name]: value }))
@@ -539,6 +656,7 @@ export function SubmissionPage() {
       }),
       notify,
     )
+    if (ok) projectAutosave.markSaved()
     if (ok && submit) notify('제출을 완료했어요. 주최자가 새 공개 리비전을 발행하면 전시에 반영됩니다.', 'info')
   }
 
@@ -563,7 +681,7 @@ export function SubmissionPage() {
       <ParticipantLayout
         aside={
           <Card className="submission-preview" padding="lg" tone="warm">
-            <CatIllustration decorative size="lg" variant="submission" />
+            <CatIllustration decorative size="lg" variant={existing?.status === 'submitted' ? 'celebrate' : 'autosave'} />
             <Chip icon="person" tone="warning">개인 제출</Chip>
             <h3>{form.title || '나의 작품 제목'}</h3>
             <p>{form.pitch || '한 줄 소개가 이곳에 표시됩니다.'}</p>
@@ -587,14 +705,30 @@ export function SubmissionPage() {
             <Field helpText="쉼표로 구분하며 최대 6개까지 전시에 표시됩니다." label="기술·주제 태그" onChange={(event) => update('tags', event.target.value)} placeholder="React, Firebase, 교육" value={form.tags} />
             <Textarea label="제작 회고" maxLength={1200} onChange={(event) => update('retrospective', event.target.value)} required rows={5} showCount value={form.retrospective} />
             <div className="split mobile-stack">
-              <span className="small-text muted">실행 URL 또는 GitHub URL 중 하나는 필수입니다.</span>
-              <MascotAction compactOnly label="멋진 작품을 기다릴게요!" variant="submission">
+              <AutosaveStatus phase={projectAutosave.phase} savedAt={projectAutosave.savedAt} />
+              <MascotAction compactOnly label="작품 초안을 자동 저장하고 있어요" variant="autosave">
                 <Button onClick={() => save(false)} variant="text">임시 저장</Button>
                 <Button leadingIcon="rocket_launch" onClick={() => save(true)}>개인 작품 제출</Button>
               </MascotAction>
             </div>
           </div>
         </Card>
+        {existing ? (
+          <ReviewThreadsPanel
+            fieldOptions={[
+              { label: '작품명', value: '작품명' },
+              { label: '한 줄 소개', value: '한 줄 소개' },
+              { label: '상세 설명', value: '상세 설명' },
+              { label: '제작 회고', value: '제작 회고' },
+            ]}
+            mode="participant"
+            participantId={currentParticipant.id}
+            quote={existing.description}
+            targetId={existing.id}
+            targetType="submission"
+            title="작품 검토 피드백"
+          />
+        ) : null}
       </ParticipantLayout>
       {renderToasts()}
     </ParticipantShell>
@@ -604,11 +738,18 @@ export function SubmissionPage() {
 export function OrganizerControlPage() {
   const { currentSlide, dispatch, state, timerView } = usePlatform()
   const { notify, renderToasts } = useNotices()
+  const [reviewAnswerId, setReviewAnswerId] = useState<string | null>(null)
   const revealed = Boolean(state.live.answersRevealedBySlide[currentSlide.id])
   const commentsEnabled = Boolean(state.live.commentsEnabledBySlide[currentSlide.id])
   const onlineCount = state.participants.filter((participant) => participant.status === 'online').length
   const stageAnswerCount = state.answers.filter((answer) => answer.slideId === currentSlide.id && answer.status === 'submitted').length
+  const stageAnswers = state.answers.filter((answer) => answer.slideId === currentSlide.id && answer.status === 'submitted')
   const submittedCount = state.submissions.filter((submission) => submission.status === 'submitted').length
+  const reviewAnswer = stageAnswers.find((answer) => answer.id === reviewAnswerId)
+
+  useEffect(() => {
+    setReviewAnswerId(null)
+  }, [currentSlide.id])
 
   function run(command: Parameters<typeof dispatch>[0]) {
     announceResult(dispatch(command), notify)
@@ -666,27 +807,21 @@ export function OrganizerControlPage() {
             <Card padding="md">
               <div className="split">
                 <div><strong>답변 공개</strong><p className="small-text muted">현재 단계 {stageAnswerCount}개</p></div>
-                <button
-                  aria-checked={revealed}
-                  aria-label="현재 단계 답변 공개"
-                  className={`toggle${revealed ? ' on' : ''}`}
-                  onClick={() => run({ type: 'SET_ANSWERS_REVEALED', slideId: currentSlide.id, revealed: !revealed })}
-                  role="switch"
-                  type="button"
-                ><span /></button>
+                <Switch
+                  checked={revealed}
+                  label="현재 단계 답변 공개"
+                  onChange={(checked) => run({ type: 'SET_ANSWERS_REVEALED', slideId: currentSlide.id, revealed: checked })}
+                />
               </div>
               <div className="divider" />
               <div className="split">
                 <div><strong>댓글 작성</strong><p className="small-text muted">답변 공개 후 열 수 있어요</p></div>
-                <button
-                  aria-checked={commentsEnabled}
-                  aria-label="현재 단계 댓글 작성"
-                  className={`toggle${commentsEnabled ? ' on' : ''}`}
+                <Switch
+                  checked={commentsEnabled}
                   disabled={!revealed}
-                  onClick={() => run({ type: 'SET_COMMENTS_ENABLED', slideId: currentSlide.id, enabled: !commentsEnabled })}
-                  role="switch"
-                  type="button"
-                ><span /></button>
+                  label="현재 단계 댓글 작성"
+                  onChange={(checked) => run({ type: 'SET_COMMENTS_ENABLED', slideId: currentSlide.id, enabled: checked })}
+                />
               </div>
             </Card>
           </aside>
@@ -709,6 +844,51 @@ export function OrganizerControlPage() {
             })}
           </div>
         </Card>
+
+        <Card padding="lg">
+          <SectionHeader
+            description="공개 토론 댓글과 분리된 비공개 검토 의견을 참여자에게 직접 남길 수 있습니다."
+            eyebrow="MATERIAL 3 · INLINE REVIEW"
+            title="현재 단계 답변 검토"
+            titleAs="h2"
+          />
+          <div className="stack compact organizer-review-list">
+            {stageAnswers.map((answer) => {
+              const participant = answerAuthor(answer, state.participants)
+              const threadCount = state.reviewThreads.filter((thread) => thread.targetType === 'answer' && thread.targetId === answer.id).length
+              return (
+                <article className={`review-target${reviewAnswerId === answer.id ? ' review-target--selected' : ''}`} key={answer.id}>
+                  <div className="review-target__content">
+                    <span className="avatar">{participant?.nickname.slice(0, 1) ?? '?'}</span>
+                    <div><strong>{participant?.nickname ?? '참여자'}</strong><p>{answer.content}</p></div>
+                  </div>
+                  <Button
+                    leadingIcon="rate_review"
+                    onClick={() => setReviewAnswerId((current) => current === answer.id ? null : answer.id)}
+                    size="sm"
+                    variant={reviewAnswerId === answer.id ? 'tonal' : 'outlined'}
+                  >
+                    검토 {threadCount ? `${threadCount}` : ''}
+                  </Button>
+                </article>
+              )
+            })}
+            {!stageAnswers.length ? (
+              <MascotCue description="참여자가 답변을 제출하면 인라인 검토 댓글을 남길 수 있어요." title="첫 답변을 기다리고 있어요" variant="empty" />
+            ) : null}
+          </div>
+        </Card>
+
+        {reviewAnswer ? (
+          <ReviewThreadsPanel
+            fieldOptions={[{ label: '단계 답변', value: '단계 답변' }]}
+            mode="organizer"
+            quote={reviewAnswer.content}
+            targetId={reviewAnswer.id}
+            targetType="answer"
+            title={`${answerAuthor(reviewAnswer, state.participants)?.nickname ?? '참여자'}님의 답변 검토`}
+          />
+        ) : null}
       </AdminLayout>
       {renderToasts()}
     </OrganizerShell>
@@ -725,7 +905,9 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
   const [pinReason, setPinReason] = useState('재입장 지원')
   const [pinVisible, setPinVisible] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [reviewSubmissionId, setReviewSubmissionId] = useState<string | null>(null)
   const snapshot = state.publishedSnapshot
+  const reviewSubmission = state.submissions.find((submission) => submission.id === reviewSubmissionId)
 
   useEffect(() => {
     if (!pinVisible) return
@@ -822,7 +1004,16 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
               <div className="exhibition-grid">
                 {state.submissions.map((submission) => {
                   const maker = state.participants.find((participant) => participant.id === submission.participantId)
-                  return <ProjectCard key={submission.id} maker={maker?.nickname ?? '참가자'} project={submission} />
+                  const reviewCount = state.reviewThreads.filter((thread) => thread.targetType === 'submission' && thread.targetId === submission.id).length
+                  return (
+                    <ProjectCard
+                      key={submission.id}
+                      maker={maker?.nickname ?? '참가자'}
+                      onReview={() => setReviewSubmissionId((current) => current === submission.id ? null : submission.id)}
+                      project={submission}
+                      reviewCount={reviewCount}
+                    />
+                  )
                 })}
               </div>
             ) : (
@@ -832,6 +1023,21 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
                 variant="submission"
               />
             )}
+            {reviewSubmission ? (
+              <ReviewThreadsPanel
+                fieldOptions={[
+                  { label: '작품명', value: '작품명' },
+                  { label: '한 줄 소개', value: '한 줄 소개' },
+                  { label: '상세 설명', value: '상세 설명' },
+                  { label: '제작 회고', value: '제작 회고' },
+                ]}
+                mode="organizer"
+                quote={reviewSubmission.description}
+                targetId={reviewSubmission.id}
+                targetType="submission"
+                title={`${state.participants.find((participant) => participant.id === reviewSubmission.participantId)?.nickname ?? '참여자'}님의 작품 검토`}
+              />
+            ) : null}
           </>
         ) : null}
 
@@ -914,13 +1120,22 @@ export function SynthesisPage() {
   const navigate = useNavigate()
   const { dispatch, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
-  const [summary, setSummary] = useState(state.synthesis.organizerSummary)
+  const [summary, setSummary] = usePersistentDraft(
+    `vibecoding.synthesis-draft.${state.room.id}`,
+    state.synthesis.organizerSummary,
+  )
   const [stageFilter, setStageFilter] = useState(state.slides[0].id)
   const snapshot = state.publishedSnapshot
   const stageAnswers = state.answers.filter((answer) => answer.slideId === stageFilter && answer.status === 'submitted')
+  const summaryAutosave = useAutosave({
+    enabled: summary !== state.synthesis.organizerSummary,
+    fingerprint: summary,
+    save: () => dispatch({ type: 'UPDATE_SYNTHESIS', input: { organizerSummary: summary } }).ok,
+  })
 
   function saveSummary() {
-    announceResult(dispatch({ type: 'UPDATE_SYNTHESIS', input: { organizerSummary: summary } }), notify)
+    const ok = announceResult(dispatch({ type: 'UPDATE_SYNTHESIS', input: { organizerSummary: summary } }), notify)
+    if (ok) summaryAutosave.markSaved()
   }
 
   function toggleHighlight(answerId: string) {
@@ -963,7 +1178,7 @@ export function SynthesisPage() {
           <div className="stack">
             <Card padding="lg">
               <SectionHeader description="원문을 수정하지 않고 주최자의 해석을 별도로 기록합니다." eyebrow="01 · ORGANIZER SUMMARY" title="전체 행사 요약" titleAs="h2" />
-              <Textarea label="주최자 요약" maxLength={4000} onChange={(event) => setSummary(event.target.value)} rows={9} showCount value={summary} />
+              <Textarea helpText={<AutosaveStatus phase={summaryAutosave.phase} savedAt={summaryAutosave.savedAt} />} label="주최자 요약" maxLength={4000} onChange={(event) => setSummary(event.target.value)} rows={9} showCount value={summary} />
               <div className="split mobile-stack synthesis-save">
                 <span className="small-text muted">저장 후에도 공개 화면은 다시 발행하기 전까지 바뀌지 않습니다.</span>
                 <Button leadingIcon="save" onClick={saveSummary} variant="tonal">정리 저장</Button>
@@ -1137,7 +1352,19 @@ export function EmbedDashboardPage() {
   )
 }
 
-function ProjectCard({ project, maker, onOpen }: { project: PublicProject | Submission; maker: string; onOpen?: () => void }) {
+function ProjectCard({
+  project,
+  maker,
+  onOpen,
+  onReview,
+  reviewCount = 0,
+}: {
+  project: PublicProject | Submission
+  maker: string
+  onOpen?: () => void
+  onReview?: () => void
+  reviewCount?: number
+}) {
   return (
     <article className="card project-card interactive">
       {onOpen ? (
@@ -1152,7 +1379,16 @@ function ProjectCard({ project, maker, onOpen }: { project: PublicProject | Subm
         <h2>{project.title}</h2>
         <p>{project.pitch}</p>
         <div className="chip-row">{project.tags.slice(0, 3).map((tag) => <Chip key={tag}>{tag}</Chip>)}</div>
-        {onOpen ? <Button fullWidth onClick={onOpen} size="sm" variant="text">작품 이야기 보기</Button> : null}
+        {onOpen || onReview ? (
+          <div className="project-card__actions">
+            {onOpen ? <Button fullWidth onClick={onOpen} size="sm" variant="text">작품 이야기 보기</Button> : null}
+            {onReview ? (
+              <Button leadingIcon="rate_review" onClick={onReview} size="sm" variant="tonal">
+                검토 {reviewCount ? reviewCount : ''}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </article>
   )

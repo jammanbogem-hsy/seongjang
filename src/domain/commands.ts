@@ -7,6 +7,8 @@ import type {
   Comment,
   PlatformCommand,
   PrototypeState,
+  ReviewMessage,
+  ReviewThread,
   Submission,
   SubmitProjectInput,
   TimerView,
@@ -126,6 +128,23 @@ function validateSubmission(input: SubmitProjectInput): CommandResult<undefined>
     }
   }
   return { ok: true, value: undefined }
+}
+
+function reviewOwnerId(state: PrototypeState, thread: ReviewThread): string | null {
+  if (thread.targetType === 'answer') {
+    return state.answers.find((answer) => answer.id === thread.targetId)?.participantId ?? null
+  }
+  return state.submissions.find((submission) => submission.id === thread.targetId)?.participantId ?? null
+}
+
+function canAccessReviewThread(
+  state: PrototypeState,
+  thread: ReviewThread,
+  authorRole: ReviewMessage['authorRole'],
+  participantId?: string,
+): boolean {
+  if (authorRole === 'organizer') return true
+  return Boolean(participantId && reviewOwnerId(state, thread) === participantId)
 }
 
 export function executePlatformCommand(
@@ -345,7 +364,7 @@ export function executePlatformCommand(
         ? {
             ...existing,
             content,
-            status: input.submit === false ? 'draft' : 'submitted',
+            status: input.submit === false ? existing.status : 'submitted',
             updatedAt: nowIso,
             submittedAt: input.submit === false ? existing.submittedAt : nowIso,
           }
@@ -436,6 +455,107 @@ export function executePlatformCommand(
       )
     }
 
+    case 'ADD_REVIEW_THREAD': {
+      const { input } = command
+      const target = input.targetType === 'answer'
+        ? state.answers.find((answer) => answer.id === input.targetId)
+        : state.submissions.find((submission) => submission.id === input.targetId)
+      if (!target) return error(state, 'NOT_FOUND', '검토할 참여자 자료를 찾을 수 없어요.')
+      const body = input.body.trim()
+      if (!body || body.length > 1_000) {
+        return error(state, 'INVALID_CONTENT', '검토 댓글은 1자 이상 1,000자 이하로 입력해주세요.')
+      }
+      const message: ReviewMessage = {
+        id: env.createId('review-message'),
+        authorRole: 'organizer',
+        participantId: null,
+        body,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      }
+      const thread: ReviewThread = {
+        id: env.createId('review-thread'),
+        targetType: input.targetType,
+        targetId: input.targetId,
+        field: input.field.trim().slice(0, 80) || '전체',
+        quote: input.quote?.trim().slice(0, 280) ?? '',
+        status: 'open',
+        messages: [message],
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        resolvedAt: null,
+      }
+      return success(
+        state,
+        { ...state, reviewThreads: [...state.reviewThreads, thread] },
+        thread,
+        '참여자에게 비공개 검토 댓글을 남겼어요.',
+      )
+    }
+
+    case 'ADD_REVIEW_REPLY': {
+      const { input } = command
+      const thread = state.reviewThreads.find((candidate) => candidate.id === input.threadId)
+      if (!thread) return error(state, 'NOT_FOUND', '검토 댓글을 찾을 수 없어요.')
+      if (!canAccessReviewThread(state, thread, input.authorRole, input.participantId)) {
+        return error(state, 'NOT_ALLOWED', '이 검토 댓글에 답글을 남길 권한이 없어요.')
+      }
+      const body = input.body.trim()
+      if (!body || body.length > 1_000) {
+        return error(state, 'INVALID_CONTENT', '답글은 1자 이상 1,000자 이하로 입력해주세요.')
+      }
+      const message: ReviewMessage = {
+        id: env.createId('review-message'),
+        authorRole: input.authorRole,
+        participantId: input.authorRole === 'participant' ? (input.participantId ?? null) : null,
+        body,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      }
+      const updated = {
+        ...thread,
+        messages: [...thread.messages, message],
+        updatedAt: nowIso,
+      }
+      return success(
+        state,
+        {
+          ...state,
+          reviewThreads: state.reviewThreads.map((candidate) =>
+            candidate.id === updated.id ? updated : candidate,
+          ),
+        },
+        updated,
+        '검토 댓글에 답글을 남겼어요.',
+      )
+    }
+
+    case 'SET_REVIEW_THREAD_STATUS': {
+      const { input } = command
+      const thread = state.reviewThreads.find((candidate) => candidate.id === input.threadId)
+      if (!thread) return error(state, 'NOT_FOUND', '검토 댓글을 찾을 수 없어요.')
+      if (!canAccessReviewThread(state, thread, input.authorRole, input.participantId)) {
+        return error(state, 'NOT_ALLOWED', '이 검토 댓글의 상태를 바꿀 권한이 없어요.')
+      }
+      const updated = {
+        ...thread,
+        status: input.status,
+        updatedAt: nowIso,
+        resolvedAt: input.status === 'resolved' ? nowIso : null,
+      }
+      return success(
+        state,
+        {
+          ...state,
+          reviewThreads: state.reviewThreads.map((candidate) =>
+            candidate.id === updated.id ? updated : candidate,
+          ),
+        },
+        updated,
+        input.status === 'resolved' ? '검토 의견을 해결됨으로 표시했어요.' : '검토 의견을 다시 열었어요.',
+      )
+    }
+
     case 'SUBMIT_PROJECT': {
       const { input } = command
       if (!state.participants.some(({ id }) => id === input.participantId)) {
@@ -446,7 +566,9 @@ export function executePlatformCommand(
       const existing = state.submissions.find(
         (submission) => submission.participantId === input.participantId,
       )
-      const status = input.submit === false ? ('draft' as const) : ('submitted' as const)
+      const status = input.submit === false
+        ? (existing?.status ?? ('draft' as const))
+        : ('submitted' as const)
       const saved: Submission = {
         id: existing?.id ?? env.createId('submission'),
         participantId: input.participantId,

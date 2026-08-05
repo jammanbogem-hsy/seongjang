@@ -74,3 +74,56 @@ describe('live controls', () => {
     expect(opened.state.live.commentsEnabledBySlide[slideId]).toBe(true)
   })
 })
+
+describe('autosave semantics', () => {
+  it('updates submitted work without downgrading its submission status', () => {
+    const seed = createSeedState()
+    const answer = seed.answers.find((candidate) => candidate.slideId === seed.slides[2].id)!
+    const editable = executePlatformCommand(
+      seed,
+      { type: 'SET_ANSWERS_REVEALED', slideId: answer.slideId, revealed: false },
+      env,
+    ).state
+    const answerAutosave = executePlatformCommand(
+      editable,
+      {
+        type: 'SAVE_ANSWER',
+        input: {
+          participantId: answer.participantId,
+          slideId: answer.slideId,
+          content: '자동 저장으로 수정된 제출 답변',
+          submit: false,
+        },
+      },
+      env,
+    )
+    expect(answerAutosave.state.answers.find((candidate) => candidate.id === answer.id)).toMatchObject({
+      content: '자동 저장으로 수정된 제출 답변',
+      status: 'submitted',
+    })
+
+    const submission = seed.submissions[0]
+    const projectAutosave = executePlatformCommand(
+      seed,
+      {
+        type: 'SUBMIT_PROJECT',
+        input: {
+          participantId: submission.participantId,
+          title: `${submission.title} 수정`,
+          pitch: submission.pitch,
+          description: submission.description,
+          demoUrl: submission.demoUrl,
+          githubUrl: submission.githubUrl,
+          tags: submission.tags,
+          retrospective: submission.retrospective,
+          submit: false,
+        },
+      },
+      env,
+    )
+    expect(projectAutosave.state.submissions.find((candidate) => candidate.id === submission.id)).toMatchObject({
+      title: `${submission.title} 수정`,
+      status: 'submitted',
+    })
+  })
+})

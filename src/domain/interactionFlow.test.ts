@@ -158,4 +158,53 @@ describe('organizer and participant domain workflow', () => {
     )
     expect(blockedComment.result).toMatchObject({ ok: false, error: { code: 'NOT_ALLOWED' } })
   })
+
+  it('keeps organizer review threads private while allowing the owner to reply and resolve', () => {
+    let state = createSeedState()
+    const target = state.answers[0]
+    const owner = state.participants.find((participant) => participant.id === target.participantId)!
+    const other = state.participants.find((participant) => participant.id !== target.participantId)!
+    const created = executePlatformCommand(
+      state,
+      {
+        type: 'ADD_REVIEW_THREAD',
+        input: {
+          targetType: 'answer',
+          targetId: target.id,
+          field: '단계 답변',
+          quote: target.content,
+          body: '주최자만 시작할 수 있는 비공개 검토 의견입니다.',
+        },
+      },
+      env,
+    )
+    expect(created.result.ok).toBe(true)
+    state = created.state
+    const thread = state.reviewThreads.at(-1)!
+
+    const unauthorized = executePlatformCommand(
+      state,
+      {
+        type: 'ADD_REVIEW_REPLY',
+        input: { threadId: thread.id, authorRole: 'participant', participantId: other.id, body: '다른 사람 답글' },
+      },
+      env,
+    )
+    expect(unauthorized.result).toMatchObject({ ok: false, error: { code: 'NOT_ALLOWED' } })
+
+    state = run(state, {
+      type: 'ADD_REVIEW_REPLY',
+      input: { threadId: thread.id, authorRole: 'participant', participantId: owner.id, body: '자료 소유자의 답글입니다.' },
+    })
+    state = run(state, {
+      type: 'SET_REVIEW_THREAD_STATUS',
+      input: { threadId: thread.id, authorRole: 'participant', participantId: owner.id, status: 'resolved' },
+    })
+    expect(state.reviewThreads.at(-1)?.status).toBe('resolved')
+
+    state = run(state, { type: 'PUBLISH_SYNTHESIS' })
+    const publicSnapshot = JSON.stringify(state.publishedSnapshot)
+    expect(publicSnapshot).not.toContain('주최자만 시작할 수 있는 비공개 검토 의견입니다.')
+    expect(publicSnapshot).not.toContain('자료 소유자의 답글입니다.')
+  })
 })

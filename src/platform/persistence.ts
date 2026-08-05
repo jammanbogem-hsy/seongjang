@@ -38,8 +38,12 @@ function parseState(serialized: string | null): PrototypeState | null {
   try {
     const value: unknown = JSON.parse(serialized)
     if (!isPrototypeState(value)) return null
-    if (value.publishedSnapshot) freezePublishedSnapshot(value.publishedSnapshot)
-    return value
+    const normalized: PrototypeState = {
+      ...value,
+      reviewThreads: Array.isArray(value.reviewThreads) ? value.reviewThreads : [],
+    }
+    if (normalized.publishedSnapshot) freezePublishedSnapshot(normalized.publishedSnapshot)
+    return normalized
   } catch {
     return null
   }

@@ -5,6 +5,7 @@ import {
   type Comment,
   type Participant,
   type PrototypeState,
+  type ReviewThread,
   type Slide,
   type Submission,
 } from './models'
@@ -167,6 +168,59 @@ const comments: Comment[] = [
   },
 ]
 
+const reviewThreads: ReviewThread[] = [
+  {
+    id: 'review-thread-01',
+    targetType: 'answer',
+    targetId: 'answer-17',
+    field: '단계 답변',
+    quote: '100명의 상태를 놓치지 않는지 리허설로 검증하겠습니다.',
+    status: 'open',
+    messages: [
+      {
+        id: 'review-message-01',
+        authorRole: 'organizer',
+        participantId: null,
+        body: '리허설에서 확인할 성공 기준을 숫자로 한 가지 더 적어보면 실험이 선명해질 것 같아요.',
+        createdAt: '2026-08-04T11:30:00.000Z',
+        updatedAt: '2026-08-04T11:30:00.000Z',
+      },
+    ],
+    createdAt: '2026-08-04T11:30:00.000Z',
+    updatedAt: '2026-08-04T11:30:00.000Z',
+    resolvedAt: null,
+  },
+  {
+    id: 'review-thread-02',
+    targetType: 'submission',
+    targetId: 'submission-01',
+    field: '상세 설명',
+    quote: '처음 온 참가자도 길을 잃지 않게 합니다.',
+    status: 'resolved',
+    messages: [
+      {
+        id: 'review-message-02',
+        authorRole: 'organizer',
+        participantId: null,
+        body: '첫 참가자가 가장 먼저 보게 되는 화면을 한 문장으로 덧붙여주세요.',
+        createdAt: '2026-08-04T11:36:00.000Z',
+        updatedAt: '2026-08-04T11:36:00.000Z',
+      },
+      {
+        id: 'review-message-03',
+        authorRole: 'participant',
+        participantId: 'participant-02',
+        body: '온보딩 첫 화면의 단계 안내를 상세 설명에 반영했습니다.',
+        createdAt: '2026-08-04T11:48:00.000Z',
+        updatedAt: '2026-08-04T11:48:00.000Z',
+      },
+    ],
+    createdAt: '2026-08-04T11:36:00.000Z',
+    updatedAt: '2026-08-04T11:48:00.000Z',
+    resolvedAt: '2026-08-04T11:52:00.000Z',
+  },
+]
+
 const submissionSeeds = [
   {
     participantId: 'participant-02',
@@ -293,6 +347,7 @@ export function createSeedState(): PrototypeState {
     },
     answers,
     comments,
+    reviewThreads,
     themes: [
       {
         id: 'theme-shared-flow',

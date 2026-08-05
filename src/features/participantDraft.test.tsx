@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PlatformProvider, usePlatform } from '../app/PlatformProvider'
 import { RouterProvider } from '../app/router'
@@ -35,6 +35,7 @@ describe('participant answer draft state', () => {
     cleanup()
     window.localStorage.clear()
     window.sessionStorage.clear()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -82,5 +83,29 @@ describe('participant answer draft state', () => {
     expect(screen.getByLabelText('나의 개인 답변')).toBeDisabled()
     expect(screen.getByRole('button', { name: '임시 저장' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '개인 답변 제출' })).toBeDisabled()
+  })
+
+  it('autosaves a changed answer as a draft after the debounce window', () => {
+    vi.useFakeTimers()
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <ParticipantLivePage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    fireEvent.change(screen.getByLabelText('나의 개인 답변'), {
+      target: { value: '자동 저장되는 새로운 단계 답변' },
+    })
+    act(() => vi.advanceTimersByTime(750))
+
+    const persisted = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    const saved = persisted.answers.find(
+      (answer: { participantId: string; slideId: string }) =>
+        answer.participantId === persisted.participants[0].id && answer.slideId === persisted.slides[3].id,
+    )
+    expect(saved).toMatchObject({ content: '자동 저장되는 새로운 단계 답변', status: 'draft' })
+    expect(screen.getByText(/모든 변경사항 저장됨/)).toBeInTheDocument()
   })
 })
