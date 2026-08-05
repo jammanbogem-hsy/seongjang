@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { User } from 'firebase/auth'
+import { browserPopupRedirectResolver, browserSessionPersistence, type User } from 'firebase/auth'
 import {
   createFirebaseEventBackend,
   FIREBASE_CALLABLES,
@@ -11,6 +11,7 @@ import {
   type FirebaseDocumentSnapshotRecord,
 } from './firebaseBackend'
 import { assembleFirebaseSnapshot } from './firebase/assemble'
+import { VIBECODING_AUTH_DEPENDENCIES } from './firebase/config'
 
 class FakeDriver implements FirebaseBackendDriver {
   collectionListeners = new Map<string, (snapshot: FirebaseCollectionSnapshotRecord) => void>()
@@ -69,6 +70,13 @@ describe('Firebase production boundary', () => {
       appId: '1:221777482604:web:608ba46b5d66bfea021949',
       authDomain: 'vibecoding-a3ada.firebaseapp.com',
       projectId: 'vibecoding-a3ada',
+    })
+  })
+
+  it('initializes session auth with the browser popup resolver', () => {
+    expect(VIBECODING_AUTH_DEPENDENCIES).toMatchObject({
+      persistence: browserSessionPersistence,
+      popupRedirectResolver: browserPopupRedirectResolver,
     })
   })
 

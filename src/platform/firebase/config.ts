@@ -1,6 +1,7 @@
 import { getApp, getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app'
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check'
 import {
+  browserPopupRedirectResolver,
   browserSessionPersistence,
   connectAuthEmulator,
   getAuth,
@@ -22,6 +23,11 @@ export const VIBECODING_FIREBASE_CONFIG: FirebaseOptions = Object.freeze({
   authDomain: 'vibecoding-a3ada.firebaseapp.com',
   messagingSenderId: '221777482604',
   projectId: 'vibecoding-a3ada',
+})
+
+export const VIBECODING_AUTH_DEPENDENCIES = Object.freeze({
+  persistence: browserSessionPersistence,
+  popupRedirectResolver: browserPopupRedirectResolver,
 })
 
 const APP_NAME = 'vibecoding-web'
@@ -79,7 +85,7 @@ function firestore(app: FirebaseApp): Firestore {
 
 function sessionAuth(app: FirebaseApp): Auth {
   try {
-    return initializeAuth(app, { persistence: browserSessionPersistence })
+    return initializeAuth(app, VIBECODING_AUTH_DEPENDENCIES)
   } catch {
     return getAuth(app)
   }
