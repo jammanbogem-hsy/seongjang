@@ -324,6 +324,13 @@ export function executePlatformCommand(
       if (!state.slides.some(({ id }) => id === input.slideId)) {
         return error(state, 'NOT_FOUND', '질문을 찾을 수 없어요.')
       }
+      const activeSlide = state.slides[state.live.activeSlideIndex]
+      if (activeSlide?.id !== input.slideId) {
+        return error(state, 'NOT_ALLOWED', '현재 진행 중인 질문에만 답변할 수 있어요.')
+      }
+      if (getTimerView(state.live.timer, now).status === 'complete') {
+        return error(state, 'NOT_ALLOWED', '답변 시간이 종료되어 더 이상 저장할 수 없어요.')
+      }
       const content = input.content.trim()
       if (!content || content.length > 1_200) {
         return error(state, 'INVALID_CONTENT', '답변은 1자 이상 1,200자 이하로 입력해주세요.')
@@ -478,7 +485,7 @@ export function executePlatformCommand(
         state,
         { ...state, adminInvites: [...state.adminInvites, invite] },
         invite,
-        '관리자 초대를 보냈어요.',
+        '관리자 초대 요청을 기록했어요. 실제 메일은 아직 발송되지 않습니다.',
       )
     }
 

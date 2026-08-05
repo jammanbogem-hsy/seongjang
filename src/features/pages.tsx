@@ -272,7 +272,7 @@ export function ParticipantLivePage() {
     timerView,
   } = usePlatform()
   const { notify, renderToasts } = useNotices()
-  const [answerText, setAnswerText] = useState('')
+  const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({})
   const [commentTarget, setCommentTarget] = useState<string | null>(null)
   const [commentText, setCommentText] = useState('')
   const revealed = Boolean(state.live.answersRevealedBySlide[currentSlide.id])
@@ -285,8 +285,7 @@ export function ParticipantLivePage() {
         (answer) => answer.participantId === currentParticipant.id && answer.slideId === currentSlide.id,
       )
     : undefined
-
-  useEffect(() => setAnswerText(ownAnswer?.content ?? ''), [currentSlide.id, ownAnswer?.content])
+  const answerText = answerDrafts[currentSlide.id] ?? ownAnswer?.content ?? ''
 
   if (!currentParticipant) {
     return (
@@ -305,7 +304,7 @@ export function ParticipantLivePage() {
   const participant = currentParticipant
 
   function saveAnswer(submit = true) {
-    announceResult(
+    const ok = announceResult(
       dispatch({
         type: 'SAVE_ANSWER',
         input: {
@@ -317,6 +316,14 @@ export function ParticipantLivePage() {
       }),
       notify,
     )
+    if (ok) {
+      setAnswerDrafts((current) => {
+        if (!(currentSlide.id in current)) return current
+        const next = { ...current }
+        delete next[currentSlide.id]
+        return next
+      })
+    }
   }
 
   function addComment(event: FormEvent) {
@@ -364,7 +371,10 @@ export function ParticipantLivePage() {
                   helpText={ownAnswer ? `마지막 저장 · ${new Date(ownAnswer.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : '이 답변은 공개 전까지 나와 관리자만 볼 수 있어요.'}
                   label="나의 개인 답변"
                   maxLength={1200}
-                  onChange={(event) => setAnswerText(event.target.value)}
+                  onChange={(event) => setAnswerDrafts((current) => ({
+                    ...current,
+                    [currentSlide.id]: event.target.value,
+                  }))}
                   placeholder="관찰한 장면과 맥락을 구체적으로 적어보세요."
                   rows={7}
                   showCount
@@ -376,7 +386,7 @@ export function ParticipantLivePage() {
                     {ownAnswer?.status === 'submitted' ? <Chip icon="check_circle" tone="success">제출됨</Chip> : null}
                   </span>
                   <MascotAction compactOnly label="좋아요, 이제 제출해요!" variant="ideation">
-                    <Button disabled={!answerText.trim()} onClick={() => saveAnswer(false)} variant="text">임시 저장</Button>
+                    <Button disabled={!answerText.trim() || timerView.status === 'complete'} onClick={() => saveAnswer(false)} variant="text">임시 저장</Button>
                     <Button disabled={!answerText.trim() || timerView.status === 'complete'} leadingIcon="send" onClick={() => saveAnswer(true)}>개인 답변 제출</Button>
                   </MascotAction>
                 </div>
