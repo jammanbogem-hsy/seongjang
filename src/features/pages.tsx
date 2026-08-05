@@ -56,6 +56,52 @@ function ResultLink({ to, children }: { to: string; children: ReactNode }) {
   )
 }
 
+function ParticipantIdentityGate({
+  description,
+  illustration,
+  onCreate,
+  onSelect,
+  participants,
+  title,
+}: {
+  description: string
+  illustration: 'lobby' | 'submission'
+  onCreate: () => void
+  onSelect: (participantId: string) => void
+  participants: Participant[]
+  title: string
+}) {
+  return (
+    <Card className="empty-state identity-gate" padding="lg">
+      <CatIllustration size="lg" variant={illustration} />
+      <Chip icon="person" tone="primary">개인 참여</Chip>
+      <h1>{title}</h1>
+      <p>{description}</p>
+      <Button
+        className="identity-gate__primary"
+        leadingIcon="person_add"
+        onClick={onCreate}
+        size="lg"
+      >
+        새 닉네임 만들기
+      </Button>
+      {participants.length > 0 ? (
+        <div className="identity-gate__examples">
+          <strong><Icon name="science" size="sm" /> 프로토타입 예시</strong>
+          <p>아래 이름은 화면을 빠르게 둘러보기 위한 예시 데이터입니다.</p>
+          <div className="identity-gate__example-buttons">
+            {participants.map((participant) => (
+              <Button key={participant.id} onClick={() => onSelect(participant.id)} size="sm" variant="text">
+                예시 · {participant.nickname}
+              </Button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
 export function LandingPage() {
   const navigate = useNavigate()
   const { dispatch, state } = usePlatform()
@@ -291,19 +337,14 @@ export function ParticipantLivePage() {
     return (
       <ParticipantShell>
         <main className="page narrow" id="main-content">
-          <Card className="empty-state" padding="lg">
-            <CatIllustration size="lg" variant="lobby" />
-            <h1>이 탭에서 사용할 참여자를 선택해주세요.</h1>
-            <p>각 탭은 서로 다른 참여자로 둘러볼 수 있고 행사 진행 상태는 함께 공유합니다.</p>
-            <div className="button-row">
-              {state.participants.slice(0, 4).map((participant) => (
-                <Button key={participant.id} onClick={() => selectParticipant(participant.id)} variant="outlined">
-                  {participant.nickname}
-                </Button>
-              ))}
-              <Button onClick={() => navigate(`/join/${state.room.code}`)}>새 닉네임 만들기</Button>
-            </div>
-          </Card>
+          <ParticipantIdentityGate
+            description="각자 만든 닉네임과 PIN으로 답변과 개인 작품을 안전하게 이어갑니다."
+            illustration="lobby"
+            onCreate={() => navigate(`/join/${state.room.code}`)}
+            onSelect={selectParticipant}
+            participants={state.participants.slice(0, 4)}
+            title="나만의 참여자 이름으로 시작하세요."
+          />
         </main>
       </ParticipantShell>
     )
@@ -542,19 +583,14 @@ export function SubmissionPage() {
     return (
       <ParticipantShell>
         <main className="page narrow" id="main-content">
-          <Card className="empty-state" padding="lg">
-            <CatIllustration size="lg" variant="submission" />
-            <h1>작품을 제출할 참여자를 선택해주세요.</h1>
-            <p>다른 사람의 개인 작품을 덮어쓰지 않도록 이 탭에서 사용할 참여자를 먼저 명시적으로 선택합니다.</p>
-            <div className="button-row">
-              {state.participants.slice(0, 4).map((participant) => (
-                <Button key={participant.id} onClick={() => selectParticipant(participant.id)} variant="outlined">
-                  {participant.nickname}
-                </Button>
-              ))}
-              <Button onClick={() => navigate(`/join/${state.room.code}`)}>새 닉네임 만들기</Button>
-            </div>
-          </Card>
+          <ParticipantIdentityGate
+            description="각자의 작품을 분리해 보관하기 위해 먼저 나만의 닉네임과 PIN을 만들어주세요."
+            illustration="submission"
+            onCreate={() => navigate(`/join/${state.room.code}`)}
+            onSelect={selectParticipant}
+            participants={state.participants.slice(0, 4)}
+            title="개인 작품을 위한 이름을 만들어주세요."
+          />
         </main>
         {renderToasts()}
       </ParticipantShell>

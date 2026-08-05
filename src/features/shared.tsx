@@ -77,12 +77,11 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
             className="keep-mobile"
             leadingIcon="open_in_new"
             onClick={() => window.open(`/events/${EVENT_ID}/live`, '_blank', 'noopener,noreferrer')}
-            size="sm"
             variant="tonal"
           >
             참여자 화면
           </Button>
-          <Button leadingIcon="home" onClick={() => navigate('/')} size="sm" variant="text">
+          <Button leadingIcon="home" onClick={() => navigate('/')} variant="text">
             홈
           </Button>
         </>
@@ -103,7 +102,7 @@ export function ParticipantShell({ children }: { children: ReactNode }) {
   return (
     <AppShell
       actions={
-        <Button className="keep-mobile" leadingIcon="swap_horiz" onClick={() => navigate(`/admin/events/${EVENT_ID}/control`)} size="sm" variant="tonal">
+        <Button className="keep-mobile" leadingIcon="swap_horiz" onClick={() => navigate(`/admin/events/${EVENT_ID}/control`)} variant="tonal">
           역할 전환
         </Button>
       }
@@ -113,7 +112,7 @@ export function ParticipantShell({ children }: { children: ReactNode }) {
       roomCode={state.room.code}
     >
       <div className="session-strip" role="status">
-        <span className="live-dot" />
+        <span className="session-strip__signal"><Icon filled name="sensors" size="sm" /></span>
         <strong>{currentParticipant?.nickname ?? '게스트'}</strong>
         <span>님의 탭 · 다른 탭의 주최자 제어와 동기화됩니다</span>
         <Icon name="sync" size="sm" />
@@ -129,7 +128,7 @@ export function PublicShell({ children }: { children: ReactNode }) {
   return (
     <AppShell
       actions={
-        <Button className="keep-mobile" leadingIcon="login" onClick={() => navigate(`/join/${state.room.code}`)} size="sm" variant="outlined">
+        <Button className="keep-mobile" leadingIcon="login" onClick={() => navigate(`/join/${state.room.code}`)} variant="outlined">
           방 입장
         </Button>
       }

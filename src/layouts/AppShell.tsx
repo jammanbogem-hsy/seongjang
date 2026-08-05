@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link, NavLink } from '../app/router'
 import { Icon } from '../ui/Icon'
-import { StatusChip } from '../ui/Chip'
+import { Chip, StatusChip } from '../ui/Chip'
 import { cx } from '../ui/utils'
 
 export interface AppNavItem {
@@ -28,12 +28,16 @@ const modeLabels: Record<NonNullable<AppShellProps['mode']>, string> = {
   public: '공개 전시',
 }
 
+const modeIcons: Record<NonNullable<AppShellProps['mode']>, string> = {
+  organizer: 'admin_panel_settings',
+  participant: 'person',
+  public: 'public',
+}
+
 function ProductMark() {
   return (
     <span aria-hidden="true" className="app-shell__mark">
-      <span />
-      <span />
-      <span />
+      <Icon filled name="interests" size="lg" />
     </span>
   )
 }
@@ -48,7 +52,11 @@ function Navigation({ items, mobile = false }: { items: AppNavItem[]; mobile?: b
           key={item.to}
           to={item.to}
         >
-          {item.icon ? <Icon name={item.icon} size="sm" /> : null}
+          {item.icon ? (
+            <span className="app-shell__nav-icon">
+              <Icon filled={mobile} name={item.icon} size={mobile ? 'md' : 'sm'} />
+            </span>
+          ) : null}
           <span>{item.label}</span>
         </NavLink>
       ))}
@@ -78,15 +86,18 @@ export function AppShell({
             <span className="app-shell__wordmark">VibeCoding</span>
           </Link>
 
-          <div className="app-shell__context">
-            {mode ? <span className="app-shell__mode">{modeLabels[mode]}</span> : null}
-            {roomCode ? (
-              <span aria-label={`방 코드 ${roomCode}`} className="app-shell__room-code">
-                <Icon name="meeting_room" size="sm" />
-                {roomCode}
-              </span>
+          <div aria-label="현재 화면 정보" className="app-shell__context">
+            {mode ? (
+              <Chip className="app-shell__mode-chip" icon={modeIcons[mode]}>
+                {modeLabels[mode]}
+              </Chip>
             ) : null}
-            <StatusChip status="prototype" />
+            {roomCode ? (
+              <Chip aria-label={`방 코드 ${roomCode}`} className="app-shell__room-chip" icon="meeting_room">
+                {roomCode}
+              </Chip>
+            ) : null}
+            <StatusChip className="app-shell__prototype-chip" status="prototype" />
           </div>
 
           {navItems.length > 0 ? <Navigation items={navItems} /> : null}
