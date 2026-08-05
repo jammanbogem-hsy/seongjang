@@ -454,7 +454,7 @@ select:focus-visible,
 
 .landing-gateway {
   display: grid;
-  width: min(100% - 32px, 920px);
+  width: min(100% - 48px, 1160px);
   min-height: calc(100vh - 72px);
   margin: 0 auto;
   padding: 48px 0 88px;
@@ -465,6 +465,7 @@ select:focus-visible,
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr);
   width: 100%;
+  min-height: 520px;
   overflow: hidden;
   border: 1px solid var(--outline);
   border-radius: 24px;
@@ -472,23 +473,29 @@ select:focus-visible,
 }
 
 .gateway-join {
-  padding: clamp(28px, 5vw, 48px);
+  display: grid;
+  align-content: center;
+  padding: clamp(40px, 6vw, 68px);
 }
 
 .gateway-icon {
   display: grid;
-  width: 48px;
-  height: 48px;
-  margin-bottom: 24px;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 30px;
   place-items: center;
   border-radius: 50%;
   color: var(--primary);
   background: var(--surface-container);
 }
 
+.gateway-icon .ui-icon {
+  font-size: 40px;
+}
+
 .gateway-join h1 {
-  margin: 0 0 28px;
-  font-size: clamp(30px, 5vw, 42px);
+  margin: 0 0 40px;
+  font-size: clamp(44px, 5vw, 60px);
   letter-spacing: -.035em;
 }
 
@@ -499,14 +506,14 @@ select:focus-visible,
 
 .gateway-join-form label {
   color: var(--on-surface-variant);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
 }
 
 .gateway-join-row {
   display: flex;
   gap: 8px;
-  padding: 5px;
+  padding: 7px;
   border: 1px solid #747775;
   border-radius: 14px;
   background: #fff;
@@ -520,35 +527,52 @@ select:focus-visible,
 .gateway-join-row input {
   min-width: 0;
   flex: 1;
-  padding: 0 12px;
+  min-height: 58px;
+  padding: 0 16px;
   border: 0;
   outline: 0;
   color: var(--ink);
   background: transparent;
-  font-size: 18px;
+  font-size: 23px;
   font-weight: 600;
   letter-spacing: .08em;
   text-transform: uppercase;
 }
 
+.gateway-join-row .ui-button {
+  min-width: 136px;
+  min-height: 58px;
+  padding: 0 24px;
+  font-size: 18px;
+}
+
+.gateway-join-row .ui-icon {
+  font-size: 24px;
+}
+
 .gateway-actions {
   display: grid;
   align-content: center;
-  gap: 6px;
-  padding: 28px;
+  gap: 10px;
+  padding: clamp(32px, 5vw, 52px);
   border-left: 1px solid var(--outline);
   background: var(--surface-container-low);
 }
 
 .gateway-action.ui-button {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 24px;
+  grid-template-columns: 36px minmax(0, 1fr) 28px;
   justify-content: stretch;
-  min-height: 58px;
-  padding: 0 16px;
-  border-radius: 14px;
+  min-height: 78px;
+  padding: 0 22px;
+  border-radius: 18px;
   color: var(--ink);
+  font-size: 18px;
   text-align: left;
+}
+
+.gateway-action.ui-button .ui-icon {
+  font-size: 28px;
 }
 
 .gateway-action.ui-button:hover {
