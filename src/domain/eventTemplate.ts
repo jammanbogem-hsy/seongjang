@@ -85,6 +85,8 @@ export function createEmptyState(): PrototypeState {
     },
     answers: [],
     comments: [],
+    liveReactions: [],
+    liveChatMessages: [],
     reviewThreads: [],
     themes: [],
     submissions: [],

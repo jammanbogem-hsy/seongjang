@@ -40,6 +40,8 @@ function parseState(serialized: string | null): PrototypeState | null {
     if (!isPrototypeState(value)) return null
     const normalized: PrototypeState = {
       ...value,
+      liveChatMessages: Array.isArray(value.liveChatMessages) ? value.liveChatMessages : [],
+      liveReactions: Array.isArray(value.liveReactions) ? value.liveReactions : [],
       reviewThreads: Array.isArray(value.reviewThreads) ? value.reviewThreads : [],
     }
     if (normalized.publishedSnapshot) freezePublishedSnapshot(normalized.publishedSnapshot)

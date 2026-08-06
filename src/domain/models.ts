@@ -4,6 +4,7 @@ export const ROOM_CAPACITY = 100 as const
 export type Identifier = string
 export type ParticipantStatus = 'online' | 'offline'
 export type ParticipantEntryMode = 'register' | 'reenter'
+export type LiveReactionKind = 'like' | 'love' | 'idea' | 'question'
 export type TimerStatus = 'idle' | 'running' | 'paused' | 'complete'
 export type AnswerStatus = 'draft' | 'submitted'
 export type SubmissionStatus = 'draft' | 'submitted'
@@ -91,6 +92,22 @@ export interface Comment {
   body: string
   createdAt: string
   updatedAt: string
+}
+
+export interface LiveReaction {
+  id: Identifier
+  participantId: Identifier
+  slideId: Identifier
+  kind: LiveReactionKind
+  updatedAt: string
+}
+
+export interface LiveChatMessage {
+  id: Identifier
+  participantId: Identifier
+  slideId: Identifier
+  body: string
+  createdAt: string
 }
 
 export interface ReviewMessage {
@@ -240,6 +257,8 @@ export interface PrototypeState {
   live: LiveSession
   answers: Answer[]
   comments: Comment[]
+  liveReactions: LiveReaction[]
+  liveChatMessages: LiveChatMessage[]
   reviewThreads: ReviewThread[]
   themes: Theme[]
   submissions: Submission[]
@@ -308,6 +327,23 @@ export interface UpdateCommentInput {
 export interface DeleteCommentInput {
   participantId: Identifier
   commentId: Identifier
+}
+
+export interface SetLiveReactionInput {
+  participantId: Identifier
+  slideId: Identifier
+  kind: LiveReactionKind | null
+}
+
+export interface SendLiveChatMessageInput {
+  participantId: Identifier
+  slideId: Identifier
+  body: string
+}
+
+export interface DeleteLiveChatMessageInput {
+  participantId?: Identifier
+  messageId: Identifier
 }
 
 export interface AddReviewThreadInput {
@@ -393,6 +429,9 @@ export type PlatformCommand =
   | { type: 'ADD_COMMENT'; input: AddCommentInput }
   | { type: 'UPDATE_COMMENT'; input: UpdateCommentInput }
   | { type: 'DELETE_COMMENT'; input: DeleteCommentInput }
+  | { type: 'SET_LIVE_REACTION'; input: SetLiveReactionInput }
+  | { type: 'SEND_LIVE_CHAT_MESSAGE'; input: SendLiveChatMessageInput }
+  | { type: 'DELETE_LIVE_CHAT_MESSAGE'; input: DeleteLiveChatMessageInput }
   | { type: 'ADD_REVIEW_THREAD'; input: AddReviewThreadInput }
   | { type: 'ADD_REVIEW_REPLY'; input: AddReviewReplyInput }
   | { type: 'SET_REVIEW_THREAD_STATUS'; input: SetReviewThreadStatusInput }

@@ -303,6 +303,8 @@ export function createSeedState(): PrototypeState {
     },
     answers,
     comments,
+    liveReactions: [],
+    liveChatMessages: [],
     reviewThreads,
     themes: [
       {

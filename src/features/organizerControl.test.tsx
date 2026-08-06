@@ -158,4 +158,72 @@ describe('organizer live controls', () => {
     expect(screen.queryByRole('heading', { name: '세션 시작을 기다리고 있어요' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: seed.slides[0].title })).toBeInTheDocument()
   })
+
+  it('lets a participant send a live reaction and chat message on the current slide', async () => {
+    const seed = createSeedState()
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+    window.sessionStorage.setItem(PARTICIPANT_SESSION_KEY, seed.participants[0].id)
+    window.history.replaceState(null, '', '/events/room-vibe26/live')
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <ParticipantLivePage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '공감 0' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '라이브 채팅' }), {
+      target: { value: '이 질문을 조금 더 설명해주세요.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '라이브 채팅 보내기' }))
+
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByRole('button', { name: '공감 1' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('이 질문을 조금 더 설명해주세요.')).toBeInTheDocument()
+    const stored = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    expect(stored.liveReactions).toEqual([
+      expect.objectContaining({ participantId: seed.participants[0].id, kind: 'like' }),
+    ])
+    expect(stored.liveChatMessages).toEqual([
+      expect.objectContaining({ participantId: seed.participants[0].id, body: '이 질문을 조금 더 설명해주세요.' }),
+    ])
+  })
+
+  it('shows the current slide reaction summary and live chat to the organizer', async () => {
+    const seed = createSeedState()
+    const slideId = seed.slides[seed.live.activeSlideIndex].id
+    seed.liveReactions = [{
+      id: 'reaction-01',
+      participantId: seed.participants[0].id,
+      slideId,
+      kind: 'question',
+      updatedAt: '2026-08-05T01:01:00.000Z',
+    }]
+    seed.liveChatMessages = [{
+      id: 'chat-01',
+      participantId: seed.participants[0].id,
+      slideId,
+      body: '지금 단계의 예시를 보고 싶어요.',
+      createdAt: '2026-08-05T01:02:00.000Z',
+    }]
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <OrganizerControlPage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    expect(screen.getByRole('heading', { name: '청중 반응과 채팅' })).toBeInTheDocument()
+    expect(screen.getByLabelText('질문 1개')).toHaveTextContent('1')
+    expect(screen.getByText('지금 단계의 예시를 보고 싶어요.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: `${seed.participants[0].nickname} 채팅 삭제` }))
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByText('지금 단계의 예시를 보고 싶어요.')).not.toBeInTheDocument()
+  })
 })

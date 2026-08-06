@@ -4,6 +4,8 @@ import {
   type Answer,
   type Comment,
   type LiveSession,
+  type LiveChatMessage,
+  type LiveReaction,
   type Participant,
   type PrototypeState,
   type PublishedSnapshot,
@@ -405,6 +407,34 @@ function parseSynthesis(record: FirebaseDocumentRecord | null): Synthesis {
   }
 }
 
+function parseLiveReactions(records: FirebaseDocumentRecord[]): LiveReaction[] {
+  return records.flatMap((record) => {
+    const data = documentData(record)
+    const kind = data.kind
+    if (kind !== 'like' && kind !== 'love' && kind !== 'idea' && kind !== 'question') return []
+    return [{
+      id: record.id,
+      participantId: text(data.participantId ?? data.ownerParticipantId),
+      slideId: text(data.slideId),
+      kind,
+      updatedAt: iso(data.updatedAt),
+    }]
+  })
+}
+
+function parseLiveChatMessages(records: FirebaseDocumentRecord[]): LiveChatMessage[] {
+  return records.map((record) => {
+    const data = documentData(record)
+    return {
+      id: record.id,
+      participantId: text(data.participantId ?? data.ownerParticipantId),
+      slideId: text(data.slideId),
+      body: text(data.body),
+      createdAt: iso(data.createdAt),
+    }
+  }).sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+}
+
 export function assembleFirebaseSnapshot(
   bundle: FirebaseEntityBundle,
   metadata: { fromCache: boolean; hasPendingWrites: boolean },
@@ -426,6 +456,8 @@ export function assembleFirebaseSnapshot(
     live: parseLive(bundle.live, slides, bundle.slides),
     answers: parseAnswers(bundle.answers, answerDrafts),
     comments: parseComments(bundle.comments),
+    liveReactions: parseLiveReactions(bundle.liveReactions),
+    liveChatMessages: parseLiveChatMessages(bundle.liveChatMessages),
     reviewThreads: parseReviewThreads(bundle.reviewThreads),
     themes: parseThemes(bundle.themes),
     submissions: parseSubmissions(bundle.submissions, projectDrafts),

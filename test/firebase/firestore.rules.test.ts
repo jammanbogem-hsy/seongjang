@@ -414,6 +414,36 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
     }))
   })
 
+  it('shares live reactions and chat with active members but keeps writes server-only', async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await Promise.all([
+        setDoc(doc(db, `events/${eventId}/liveReactions/stage-discover__${participantA}`), {
+          kind: 'like',
+          participantId: participantA,
+          slideId: 'stage-discover',
+          updatedAt: Timestamp.now(),
+        }),
+        setDoc(doc(db, `events/${eventId}/liveChatMessages/message-a`), {
+          body: '질문이 있어요',
+          createdAt: Timestamp.now(),
+          participantId: participantA,
+          slideId: 'stage-discover',
+        }),
+      ])
+    })
+
+    const participantDb = testEnvironment.authenticatedContext(participantB).firestore()
+    const anonymousDb = testEnvironment.unauthenticatedContext().firestore()
+    await assertSucceeds(getDocs(collection(participantDb, `events/${eventId}/liveReactions`)))
+    await assertSucceeds(getDocs(collection(participantDb, `events/${eventId}/liveChatMessages`)))
+    await assertFails(getDocs(collection(anonymousDb, `events/${eventId}/liveChatMessages`)))
+    await assertFails(setDoc(
+      doc(participantDb, `events/${eventId}/liveChatMessages/direct-write`),
+      { body: '우회 쓰기', participantId: participantB, slideId: 'stage-discover' },
+    ))
+  })
+
   it('denies organizer-only data to an active member signed in without Google', async () => {
     const db = testEnvironment.authenticatedContext(adminUid, {
       email: 'admin@gmail.com',

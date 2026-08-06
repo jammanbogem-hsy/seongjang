@@ -179,6 +179,16 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      match /liveReactions/{reactionId} {
+        allow read: if isActiveMember(eventId);
+        allow write: if false;
+      }
+
+      match /liveChatMessages/{messageId} {
+        allow read: if isActiveMember(eventId);
+        allow write: if false;
+      }
+
       match /projectDrafts/{draftId} {
         allow read: if isOrganizer(eventId)
           || (isParticipant(eventId) && resource.data.ownerParticipantId == request.auth.uid);

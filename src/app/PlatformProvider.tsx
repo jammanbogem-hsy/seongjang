@@ -243,6 +243,12 @@ function toFirebaseCommand(
       return { type: command.type, ...command.input }
     case 'ADD_COMMENT':
       return { type: command.type, answerId: command.input.answerId, body: command.input.body }
+    case 'SET_LIVE_REACTION':
+      return { type: command.type, slideId: command.input.slideId, kind: command.input.kind }
+    case 'SEND_LIVE_CHAT_MESSAGE':
+      return { type: command.type, slideId: command.input.slideId, body: command.input.body }
+    case 'DELETE_LIVE_CHAT_MESSAGE':
+      return { type: command.type, messageId: command.input.messageId }
     case 'UPDATE_COMMENT':
       return { type: command.type, commentId: command.input.commentId, body: command.input.body }
     case 'DELETE_COMMENT':

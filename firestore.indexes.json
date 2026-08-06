@@ -47,6 +47,22 @@
         { "fieldPath": "visibility", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "liveReactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "slideId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "liveChatMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "slideId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -54,6 +70,7 @@
     { "collectionGroup": "answers", "fieldPath": "content", "indexes": [] },
     { "collectionGroup": "answers", "fieldPath": "submittedContent", "indexes": [] },
     { "collectionGroup": "discussionComments", "fieldPath": "body", "indexes": [] },
+    { "collectionGroup": "liveChatMessages", "fieldPath": "body", "indexes": [] },
     { "collectionGroup": "projectDrafts", "fieldPath": "description", "indexes": [] },
     { "collectionGroup": "projectDrafts", "fieldPath": "retrospective", "indexes": [] },
     { "collectionGroup": "submissions", "fieldPath": "description", "indexes": [] },

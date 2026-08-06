@@ -11,6 +11,8 @@
 - Functions v2: `minInstances: 0`, `maxInstances: 10`, 인스턴스당 동시성 40, 메모리 256 MiB
 - PIN 비밀키는 Secret Manager에 보관하고 모든 callable에 App Check 강제
 - Firestore listener에 100명 행사 모델에 맞은 문서 상한 적용
+- 라이브 반응은 현재 슬라이드 최대 100개, 채팅은 최신 100개만 구독하고 페이지 전환 시 이전 listener 해제
+- 라이브 채팅은 참여자당 슬라이드별 30개·1.5초 간격으로 callable Functions에서 제한
 - 전자책은 Firebase와 연결하지 않고, 참여자·입장 화면은 공개 revision shard를 구독하지 않음
 - 공개 발행에 15초 재시도 제한, 동일한 답변/댓글 공개 상태는 no-op 처리
 - Artifact Registry에 7일 자동 정리 정책 적용
@@ -21,8 +23,8 @@
 
 | 항목 | 무료 구간 | 이 제품의 주요 발생 원인 | 운영 판단 |
 | --- | ---: | --- | --- |
-| Firestore 읽기 | 50,000건/일 | 첫 접속, 실시간 답변·댓글, 재접속 | 행사일에 50%/80% 사용량 알림 권장 |
-| Firestore 쓰기 | 20,000건/일 | 초안 자동저장, 댓글, 공개 revision | 비정상 증가 시 신규 입장·댓글 일시 마감 |
+| Firestore 읽기 | 50,000건/일 | 첫 접속, 실시간 답변·반응·채팅·댓글, 재접속 | 행사일에 50%/80% 사용량 알림 권장 |
+| Firestore 쓰기 | 20,000건/일 | 초안 자동저장, 반응·채팅·댓글, 공개 revision | 비정상 증가 시 신규 입장·라이브 채팅 일시 마감 |
 | Firestore 삭제 | 20,000건/일 | TTL rate-limit 문서 정리 | TTL 삭제는 무료 사용량에 포함되지 않으나 100명 규모에서는 소액 |
 | Firestore 저장소 | 1 GiB | 불변 공개 revision 누적 | 행사 종료 후 보존 리비전 정책 확정 |
 | Firestore 아웃바운드 | 10 GiB/월 | 공개 대시보드 열람 | 불변 공개 데이터는 향후 CDN JSON으로 분리 가능 |

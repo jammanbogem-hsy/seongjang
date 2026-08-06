@@ -313,6 +313,8 @@ describe('Firebase production boundary', () => {
         title: '바이브코딩',
       } },
       live: null,
+      liveChatMessages: [],
+      liveReactions: [],
       participants: [],
       projectDrafts: [{ id: 'participant-01', data: {
         description: '제출 뒤에 고친 작품',

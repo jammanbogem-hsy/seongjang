@@ -5,6 +5,8 @@ import type {
   CommandOutcome,
   CommandResult,
   Comment,
+  LiveChatMessage,
+  LiveReaction,
   PlatformCommand,
   PrototypeState,
   ReviewMessage,
@@ -693,6 +695,99 @@ export function executePlatformCommand(
         { ...state, comments: [...state.comments, comment] },
         comment,
         '댓글을 남겼어요.',
+      )
+    }
+
+    case 'SET_LIVE_REACTION': {
+      if (state.room.lifecycle !== 'live') {
+        return error(state, 'NOT_ALLOWED', '세션 진행 중에만 반응을 보낼 수 있어요.')
+      }
+      const participant = state.participants.find(({ id }) => id === command.input.participantId)
+      if (!participant) return error(state, 'NOT_FOUND', '참가자 정보를 찾을 수 없어요.')
+      const activeSlide = state.slides[state.live.activeSlideIndex]
+      if (!activeSlide || activeSlide.id !== command.input.slideId) {
+        return error(state, 'NOT_ALLOWED', '현재 진행 중인 슬라이드에만 반응할 수 있어요.')
+      }
+      const existing = state.liveReactions.find(
+        (reaction) => reaction.participantId === participant.id && reaction.slideId === activeSlide.id,
+      )
+      if (command.input.kind === null) {
+        return success(
+          state,
+          {
+            ...state,
+            liveReactions: state.liveReactions.filter((reaction) => reaction.id !== existing?.id),
+          },
+          null,
+          '반응을 취소했어요.',
+        )
+      }
+      const reaction: LiveReaction = existing
+        ? { ...existing, kind: command.input.kind, updatedAt: nowIso }
+        : {
+            id: env.createId('live-reaction'),
+            participantId: participant.id,
+            slideId: activeSlide.id,
+            kind: command.input.kind,
+            updatedAt: nowIso,
+          }
+      return success(
+        state,
+        {
+          ...state,
+          liveReactions: existing
+            ? state.liveReactions.map((item) => item.id === existing.id ? reaction : item)
+            : [...state.liveReactions, reaction],
+        },
+        reaction,
+        '반응을 보냈어요.',
+      )
+    }
+
+    case 'SEND_LIVE_CHAT_MESSAGE': {
+      if (state.room.lifecycle !== 'live') {
+        return error(state, 'NOT_ALLOWED', '세션 진행 중에만 채팅을 보낼 수 있어요.')
+      }
+      if (!state.participants.some(({ id }) => id === command.input.participantId)) {
+        return error(state, 'NOT_FOUND', '참가자 정보를 찾을 수 없어요.')
+      }
+      const activeSlide = state.slides[state.live.activeSlideIndex]
+      if (!activeSlide || activeSlide.id !== command.input.slideId) {
+        return error(state, 'NOT_ALLOWED', '현재 진행 중인 슬라이드에만 채팅할 수 있어요.')
+      }
+      const body = command.input.body.trim()
+      if (!body || body.length > 280) {
+        return error(state, 'INVALID_CONTENT', '라이브 채팅은 1자 이상 280자 이하로 입력해주세요.')
+      }
+      const message: LiveChatMessage = {
+        id: env.createId('live-chat'),
+        participantId: command.input.participantId,
+        slideId: activeSlide.id,
+        body,
+        createdAt: nowIso,
+      }
+      return success(
+        state,
+        { ...state, liveChatMessages: [...state.liveChatMessages, message] },
+        message,
+        '주최자와 참여자에게 채팅을 보냈어요.',
+      )
+    }
+
+    case 'DELETE_LIVE_CHAT_MESSAGE': {
+      const message = state.liveChatMessages.find(({ id }) => id === command.input.messageId)
+      if (!message) return error(state, 'NOT_FOUND', '채팅 메시지를 찾을 수 없어요.')
+      if (command.input.participantId && message.participantId !== command.input.participantId) {
+        return error(state, 'NOT_ALLOWED', '자신이 보낸 채팅만 삭제할 수 있어요.')
+      }
+      return success(
+        state,
+        {
+          ...state,
+          liveChatMessages: state.liveChatMessages.filter(({ id }) => id !== message.id),
+        },
+        undefined,
+        '채팅 메시지를 삭제했어요.',
       )
     }
 

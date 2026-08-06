@@ -51,6 +51,8 @@ type CollectionKey =
   | 'answerDrafts'
   | 'answers'
   | 'comments'
+  | 'liveChatMessages'
+  | 'liveReactions'
   | 'participants'
   | 'projectDrafts'
   | 'reviewThreads'
@@ -96,6 +98,8 @@ function emptyBundle(): FirebaseEntityBundle {
     comments: [],
     event: null,
     live: null,
+    liveChatMessages: [],
+    liveReactions: [],
     participants: [],
     projectDrafts: [],
     publishedSnapshot: null,
@@ -470,6 +474,8 @@ export class FirebaseEventBackend implements FirebaseBackend {
     const messageUnsubscribers = new Map<string, () => void>()
     let participantStageUnsubscribers: Array<() => void> = []
     let participantActiveSlideId = ''
+    let liveInteractionUnsubscribers: Array<() => void> = []
+    let liveInteractionSlideId = ''
     const messagesByThread = new Map<string, FirebaseDocumentRecord[]>()
     let rawReviewThreads: FirebaseDocumentRecord[] = []
     let revealedAnswers: FirebaseDocumentRecord[] = []
@@ -723,6 +729,43 @@ export class FirebaseEventBackend implements FirebaseBackend {
       emit()
     }
 
+    const watchLiveInteractions = (slideId: string) => {
+      if (!slideId || liveInteractionSlideId === slideId) return
+      liveInteractionSlideId = slideId
+      liveInteractionUnsubscribers.forEach((unsubscribe) => unsubscribe())
+      liveInteractionUnsubscribers = []
+      bundle.liveReactions = []
+      bundle.liveChatMessages = []
+      liveInteractionUnsubscribers.push(this.driver.watchCollection(
+        {
+          limit: LISTENER_LIMITS.participants,
+          path: `events/${this.eventId}/liveReactions`,
+          where: [{ field: 'slideId', op: '==', value: slideId }],
+          order: [{ field: 'updatedAt', direction: 'desc' }],
+        },
+        (snapshot) => {
+          bundle.liveReactions = snapshot.documents
+          rememberMetadata('liveReactions', snapshot)
+          emit()
+        },
+        onError,
+      ))
+      liveInteractionUnsubscribers.push(this.driver.watchCollection(
+        {
+          limit: 100,
+          path: `events/${this.eventId}/liveChatMessages`,
+          where: [{ field: 'slideId', op: '==', value: slideId }],
+          order: [{ field: 'createdAt', direction: 'desc' }],
+        },
+        (snapshot) => {
+          bundle.liveChatMessages = snapshot.documents
+          rememberMetadata('liveChatMessages', snapshot)
+          emit()
+        },
+        onError,
+      ))
+    }
+
     const publicPath = `publicEvents/${this.publicSlug}`
     if (this.role === 'public' || this.includePublishedSnapshot) {
       unsubscribers.push(this.driver.watchDocument(publicPath, (snapshot) => {
@@ -794,6 +837,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
         ? document.data.activeSlideId
         : ''
       watchParticipantStage(slideId)
+      watchLiveInteractions(slideId)
     })
     watchCollection('slides', `${eventPath}/slides`, {
       limit: LISTENER_LIMITS.slides,
@@ -847,6 +891,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
     return () => {
       active = false
       participantStageUnsubscribers.forEach((unsubscribe) => unsubscribe())
+      liveInteractionUnsubscribers.forEach((unsubscribe) => unsubscribe())
       publicProjectUnsubscribe?.()
       publicRevisionUnsubscribers.forEach((unsubscribe) => unsubscribe())
       messageUnsubscribers.forEach((unsubscribe) => unsubscribe())

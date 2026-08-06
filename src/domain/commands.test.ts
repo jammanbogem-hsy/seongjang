@@ -123,6 +123,56 @@ describe('live controls', () => {
     expect(opened.state.live.commentsEnabledBySlide[slideId]).toBe(true)
   })
 
+  it('collects one live reaction per participant and lets it change or clear', () => {
+    const seed = createSeedState()
+    const participant = seed.participants[0]
+    const slideId = seed.slides[seed.live.activeSlideIndex].id
+
+    const reacted = executePlatformCommand(seed, {
+      type: 'SET_LIVE_REACTION',
+      input: { participantId: participant.id, slideId, kind: 'like' },
+    }, env)
+    expect(reacted.result.ok).toBe(true)
+    expect(reacted.state.liveReactions).toEqual([
+      expect.objectContaining({ participantId: participant.id, slideId, kind: 'like' }),
+    ])
+
+    const changed = executePlatformCommand(reacted.state, {
+      type: 'SET_LIVE_REACTION',
+      input: { participantId: participant.id, slideId, kind: 'question' },
+    }, env)
+    expect(changed.state.liveReactions).toHaveLength(1)
+    expect(changed.state.liveReactions[0].kind).toBe('question')
+
+    const cleared = executePlatformCommand(changed.state, {
+      type: 'SET_LIVE_REACTION',
+      input: { participantId: participant.id, slideId, kind: null },
+    }, env)
+    expect(cleared.state.liveReactions).toEqual([])
+  })
+
+  it('accepts trimmed live chat only for the active slide while the session is live', () => {
+    const seed = createSeedState()
+    const participant = seed.participants[0]
+    const slideId = seed.slides[seed.live.activeSlideIndex].id
+    const sent = executePlatformCommand(seed, {
+      type: 'SEND_LIVE_CHAT_MESSAGE',
+      input: { participantId: participant.id, slideId, body: '  질문이 있어요  ' },
+    }, env)
+
+    expect(sent.result.ok).toBe(true)
+    expect(sent.state.liveChatMessages).toEqual([
+      expect.objectContaining({ participantId: participant.id, slideId, body: '질문이 있어요' }),
+    ])
+
+    const staleSlide = seed.slides.find((slide) => slide.id !== slideId)!
+    const blocked = executePlatformCommand(sent.state, {
+      type: 'SEND_LIVE_CHAT_MESSAGE',
+      input: { participantId: participant.id, slideId: staleSlide.id, body: '지난 질문' },
+    }, env)
+    expect(blocked.result).toMatchObject({ ok: false, error: { code: 'NOT_ALLOWED' } })
+  })
+
   it('persists a custom timer duration on the active slide', () => {
     const seed = createSeedState()
     const updated = executePlatformCommand(seed, { type: 'SET_TIMER_DURATION', durationSec: 900 }, env)

@@ -55,6 +55,8 @@ export interface FirebaseEntityBundle {
   comments: FirebaseDocumentRecord[]
   event: FirebaseDocumentRecord | null
   live: FirebaseDocumentRecord | null
+  liveChatMessages: FirebaseDocumentRecord[]
+  liveReactions: FirebaseDocumentRecord[]
   participants: FirebaseDocumentRecord[]
   projectDrafts: FirebaseDocumentRecord[]
   publishedSnapshot: FirebaseDocumentRecord | null
@@ -134,6 +136,9 @@ export type FirebaseAuthoritativeCommand =
     }
   | { type: 'SUBMIT_ANSWER'; slideId: string }
   | { type: 'ADD_COMMENT'; answerId: string; body: string }
+  | { type: 'SET_LIVE_REACTION'; slideId: string; kind: 'like' | 'love' | 'idea' | 'question' | null }
+  | { type: 'SEND_LIVE_CHAT_MESSAGE'; slideId: string; body: string }
+  | { type: 'DELETE_LIVE_CHAT_MESSAGE'; messageId: string }
   | { type: 'UPDATE_COMMENT'; commentId: string; body: string }
   | { type: 'DELETE_COMMENT'; commentId: string }
   | {

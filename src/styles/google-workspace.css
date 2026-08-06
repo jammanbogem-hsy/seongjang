@@ -1160,6 +1160,185 @@ select:focus-visible,
   background: var(--surface-container);
 }
 
+.live-audience-sidebar {
+  display: grid;
+  position: sticky;
+  top: 92px;
+  gap: 12px;
+}
+
+.live-audience-sidebar .participant-side-card {
+  position: static;
+}
+
+.live-audience-card {
+  display: grid;
+  gap: 14px;
+}
+
+.live-audience-card__header,
+.live-audience-card__header > div,
+.live-audience-monitor__header,
+.live-audience-monitor__header > div:last-child,
+.live-reaction-summary__item,
+.live-reaction-summary__item > span,
+.live-chat-message > div,
+.organizer-live-chat__message header {
+  display: flex;
+  align-items: center;
+}
+
+.live-audience-card__header,
+.live-audience-monitor__header,
+.live-reaction-summary__item,
+.live-chat-message > div,
+.organizer-live-chat__message header {
+  justify-content: space-between;
+}
+
+.live-audience-card__header,
+.live-audience-monitor__header {
+  gap: 12px;
+}
+
+.live-audience-card__header > div,
+.live-audience-monitor__header > div:last-child,
+.live-reaction-summary__item > span {
+  gap: 8px;
+}
+
+.live-reaction-grid,
+.live-reaction-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.live-reaction-grid .ui-button {
+  min-width: 0;
+  padding-inline: 10px;
+}
+
+.live-reaction-grid .ui-button[aria-pressed='true'] {
+  color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.live-chat-feed,
+.organizer-live-chat {
+  display: grid;
+  gap: 8px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.live-chat-feed {
+  max-height: 260px;
+}
+
+.live-chat-message,
+.organizer-live-chat__message,
+.live-reaction-summary__item {
+  border-radius: 12px;
+  background: var(--surface-container-low);
+}
+
+.live-chat-message {
+  padding: 10px 12px;
+}
+
+.live-chat-message strong,
+.organizer-live-chat__message strong {
+  font-size: 13px;
+}
+
+.live-chat-message time,
+.organizer-live-chat__message time {
+  color: var(--on-surface-variant);
+  font-size: 11px;
+}
+
+.live-chat-message p,
+.organizer-live-chat__message p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.live-chat-empty,
+.organizer-live-chat__empty {
+  margin: 0;
+  color: var(--on-surface-variant);
+  text-align: center;
+}
+
+.live-chat-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+}
+
+.live-chat-composer .field,
+.live-chat-composer .ui-field {
+  min-width: 0;
+}
+
+.live-chat-composer .ui-button {
+  width: 100%;
+}
+
+.live-audience-monitor {
+  display: grid;
+  margin-top: 16px;
+  gap: 16px;
+}
+
+.live-audience-monitor__header h2 {
+  margin: 4px 0 0;
+  font-size: clamp(22px, 2vw, 28px);
+}
+
+.live-audience-monitor__body {
+  display: grid;
+  grid-template-columns: minmax(240px, .45fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.live-reaction-summary__item {
+  min-width: 0;
+  padding: 14px;
+}
+
+.live-reaction-summary__item output {
+  color: var(--primary);
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.organizer-live-chat {
+  max-height: 300px;
+}
+
+.organizer-live-chat__message {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 10px;
+}
+
+.organizer-live-chat__empty {
+  display: grid;
+  min-height: 140px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+}
+
 /* Synthesis, public dashboard and exhibition */
 .tabs {
   border-radius: 999px;
@@ -1413,6 +1592,10 @@ select:focus-visible,
     grid-template-columns: 1fr;
   }
 
+  .live-audience-sidebar {
+    position: static;
+  }
+
   .hero-art {
     min-height: 360px;
   }
@@ -1441,6 +1624,20 @@ select:focus-visible,
 
   .session-connection-bar .chip-row {
     justify-content: flex-start;
+  }
+
+  .live-audience-monitor__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .live-audience-monitor__body,
+  .live-chat-composer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .live-chat-composer .ui-button {
+    width: 100%;
   }
 
   .session-start-panel {

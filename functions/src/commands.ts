@@ -65,6 +65,8 @@ const MAX_REVIEW_MESSAGES_PER_THREAD = 50
 const MIN_REVIEW_REPLY_INTERVAL_MS = 2_000
 const MAX_REVIEW_THREADS_PER_TARGET = 5
 const MAX_REVIEW_THREADS_PER_PARTICIPANT = 20
+const MAX_LIVE_CHAT_MESSAGES_PER_PARTICIPANT_PER_SLIDE = 30
+const MIN_LIVE_CHAT_INTERVAL_MS = 1_500
 const MAX_SLIDES = 12
 const COMMAND_WINDOW_MS = 60_000
 const ALLOWED_SLIDE_ILLUSTRATIONS = new Set([
@@ -73,6 +75,7 @@ const ALLOWED_SLIDE_ILLUSTRATIONS = new Set([
   '/assets/illustrations/cat-submission.webp',
   '/assets/illustrations/cat-timer.webp',
 ])
+const LIVE_REACTION_KINDS = new Set(['like', 'love', 'idea', 'question'])
 const commandBuckets = new Map<string, { count: number; window: number }>()
 
 function consumeInstanceCommandBudget(eventId: string, actor: EventActor): void {
@@ -971,6 +974,124 @@ async function saveAnswer(
   return success(value, input.submit === false ? '답변 초안을 저장했습니다.' : '개인 답변을 제출했습니다.')
 }
 
+function assertLiveInteractionWindow(
+  event: DocumentSnapshot,
+  live: DocumentSnapshot,
+  slideId: string,
+): void {
+  if (!event.exists || !live.exists) {
+    throw new HttpsError('not-found', '라이브 세션 정보를 찾을 수 없습니다.')
+  }
+  if (event.get('lifecycle') !== 'live' || live.get('sessionStatus') !== 'live') {
+    throw new HttpsError('failed-precondition', '세션 진행 중에만 반응과 채팅을 보낼 수 있습니다.')
+  }
+  if (live.get('activeSlideId') !== slideId) {
+    throw new HttpsError('failed-precondition', '현재 진행 중인 슬라이드에만 반응과 채팅을 보낼 수 있습니다.')
+  }
+}
+
+async function setLiveReaction(
+  eventId: string,
+  command: UnknownRecord,
+  actor: EventActor & { role: 'participant' },
+): Promise<CommandSuccess> {
+  const input = commandInput(command, '라이브 반응')
+  const slideId = safeDocumentId(requiredString(input, 'slideId', { max: 128 }), '슬라이드 ID')
+  const rawKind = input.kind
+  if (rawKind !== null && (typeof rawKind !== 'string' || !LIVE_REACTION_KINDS.has(rawKind))) {
+    throw new HttpsError('invalid-argument', '라이브 반응 종류를 확인해주세요.')
+  }
+  const eventRef = db.doc(`events/${eventId}`)
+  const liveRef = db.doc(eventPath(eventId, 'live/state'))
+  const reactionRef = db.doc(eventPath(eventId, `liveReactions/${slideId}__${actor.uid}`))
+  const value = await db.runTransaction(async (transaction) => {
+    const [event, live] = await Promise.all([
+      transaction.get(eventRef),
+      transaction.get(liveRef),
+    ])
+    assertLiveInteractionWindow(event, live, slideId)
+    if (rawKind === null) {
+      transaction.delete(reactionRef)
+      return { kind: null, slideId }
+    }
+    const updatedAt = Timestamp.now()
+    transaction.set(reactionRef, {
+      kind: rawKind,
+      ownerParticipantId: actor.uid,
+      participantId: actor.uid,
+      slideId,
+      updatedAt,
+    })
+    return { id: reactionRef.id, kind: rawKind, slideId, updatedAt: updatedAt.toDate().toISOString() }
+  })
+  return success(value, rawKind === null ? '반응을 취소했습니다.' : '반응을 보냈습니다.')
+}
+
+async function sendLiveChatMessage(
+  eventId: string,
+  command: UnknownRecord,
+  actor: EventActor & { role: 'participant' },
+): Promise<CommandSuccess> {
+  const input = commandInput(command, '라이브 채팅')
+  const slideId = safeDocumentId(requiredString(input, 'slideId', { max: 128 }), '슬라이드 ID')
+  const body = requiredString(input, 'body', { min: 1, max: 280, label: '라이브 채팅' })
+  const eventRef = db.doc(`events/${eventId}`)
+  const liveRef = db.doc(eventPath(eventId, 'live/state'))
+  const limitRef = db.doc(eventPath(eventId, `liveInteractionLimits/${slideId}__${actor.uid}`))
+  const messageRef = db.collection(eventPath(eventId, 'liveChatMessages')).doc()
+  const value = await db.runTransaction(async (transaction) => {
+    const [event, live, limit] = await Promise.all([
+      transaction.get(eventRef),
+      transaction.get(liveRef),
+      transaction.get(limitRef),
+    ])
+    assertLiveInteractionWindow(event, live, slideId)
+    const now = Timestamp.now()
+    const lastSentAt = limit.get('lastSentAt')
+    if (lastSentAt instanceof Timestamp && now.toMillis() - lastSentAt.toMillis() < MIN_LIVE_CHAT_INTERVAL_MS) {
+      throw new HttpsError('resource-exhausted', '채팅은 잠시 간격을 두고 보내주세요.')
+    }
+    const count = Number(limit.get('count') ?? 0)
+    if (count >= MAX_LIVE_CHAT_MESSAGES_PER_PARTICIPANT_PER_SLIDE) {
+      throw new HttpsError('resource-exhausted', '이 단계에서 보낼 수 있는 채팅 수에 도달했습니다.')
+    }
+    transaction.set(limitRef, { count: count + 1, lastSentAt: now, updatedAt: now }, { merge: true })
+    transaction.create(messageRef, {
+      body,
+      createdAt: now,
+      ownerParticipantId: actor.uid,
+      participantId: actor.uid,
+      slideId,
+      visibility: 'event',
+    })
+    return { body, createdAt: now.toDate().toISOString(), id: messageRef.id, slideId }
+  })
+  return success(value, '라이브 채팅을 보냈습니다.')
+}
+
+async function deleteLiveChatMessage(
+  eventId: string,
+  command: UnknownRecord,
+  actor: EventActor,
+): Promise<CommandSuccess> {
+  const input = commandInput(command, '라이브 채팅 삭제')
+  const messageId = safeDocumentId(requiredString(input, 'messageId', { max: 128 }), '메시지 ID')
+  const messageRef = db.doc(eventPath(eventId, `liveChatMessages/${messageId}`))
+  const message = await messageRef.get()
+  if (!message.exists) throw new HttpsError('not-found', '채팅 메시지를 찾을 수 없습니다.')
+  if (actor.role !== 'owner' && actor.role !== 'admin') {
+    throw new HttpsError('permission-denied', '주최자만 라이브 채팅을 관리할 수 있습니다.')
+  }
+  await messageRef.delete()
+  await appendAuditLog({
+    action: 'live.chat.delete',
+    actor,
+    eventId,
+    metadata: { messageId, participantId: message.get('participantId'), slideId: message.get('slideId') },
+  })
+  return success({ id: messageId }, '채팅 메시지를 삭제했습니다.')
+}
+
 async function addComment(
   eventId: string,
   command: UnknownRecord,
@@ -1506,7 +1627,9 @@ async function updateSynthesis(eventId: string, command: UnknownRecord, actor: E
 const participantCommands = new Set([
   'ADD_COMMENT',
   'DELETE_COMMENT',
+  'SEND_LIVE_CHAT_MESSAGE',
   'SAVE_ANSWER',
+  'SET_LIVE_REACTION',
   'SUBMIT_ANSWER',
   'SUBMIT_PROJECT',
   'UPDATE_COMMENT',
@@ -1518,6 +1641,7 @@ const organizerCommands = new Set([
   'MOVE_SLIDE',
   'REORDER_SLIDES',
   'END_SESSION',
+  'DELETE_LIVE_CHAT_MESSAGE',
   'PAUSE_TIMER',
   'PUBLISH_SYNTHESIS',
   'RESET_TIMER',
@@ -1640,6 +1764,15 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
         break
       case 'ADD_COMMENT':
         result = await addComment(eventId, command, actor as EventActor & { role: 'participant' })
+        break
+      case 'SET_LIVE_REACTION':
+        result = await setLiveReaction(eventId, command, actor as EventActor & { role: 'participant' })
+        break
+      case 'SEND_LIVE_CHAT_MESSAGE':
+        result = await sendLiveChatMessage(eventId, command, actor as EventActor & { role: 'participant' })
+        break
+      case 'DELETE_LIVE_CHAT_MESSAGE':
+        result = await deleteLiveChatMessage(eventId, command, actor)
         break
       case 'UPDATE_COMMENT':
         result = await updateOrDeleteComment(eventId, command, actor as EventActor & { role: 'participant' }, false)
