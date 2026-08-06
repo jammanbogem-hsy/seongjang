@@ -37,6 +37,7 @@ export interface FirebaseAuthSession {
 
 export interface ParticipantJoinRequest {
   deviceId?: string
+  entryMode: 'register' | 'reenter'
   nickname: string
   pin: string
   roomCode: string
@@ -208,6 +209,7 @@ export async function joinParticipantWithPin(
   )
   const response = (await callable({
     deviceId: request.deviceId ?? participantDeviceId(),
+    entryMode: request.entryMode,
     nickname: request.nickname,
     pin: request.pin,
     roomCode: request.roomCode,

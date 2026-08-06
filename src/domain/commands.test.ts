@@ -6,12 +6,12 @@ import { createSeedState } from './seed'
 const env = { now: () => Date.parse('2026-08-05T01:00:00.000Z'), createId: (prefix: string) => `${prefix}-test` }
 
 describe('participant entry', () => {
-  it('creates a new participant and re-enters only with the same PIN', () => {
+  it('separates first entry from re-entry and only resumes with the same code', () => {
     const seed = createSeedState()
     seed.room.lifecycle = 'lobby'
     const created = executePlatformCommand(
       seed,
-      { type: 'JOIN_PARTICIPANT', input: { roomCode: 'vibe26', nickname: '  새 별  ', pin: '0042' } },
+      { type: 'JOIN_PARTICIPANT', input: { entryMode: 'register', roomCode: 'vibe26', nickname: '  새 별  ', pin: '0042' } },
       env,
     )
     expect(created.result.ok).toBe(true)
@@ -19,20 +19,41 @@ describe('participant entry', () => {
     expect(created.state.participants.at(-1)?.nickname).toBe('새 별')
     expect(created.state.participants.at(-1)?.eventId).toBe(seed.room.id)
 
+    const duplicateRegistration = executePlatformCommand(
+      created.state,
+      { type: 'JOIN_PARTICIPANT', input: { entryMode: 'register', roomCode: 'VIBE26', nickname: '새 별', pin: '0042' } },
+      env,
+    )
+    expect(duplicateRegistration.result).toMatchObject({
+      ok: false,
+      error: { code: 'NICKNAME_TAKEN' },
+    })
+
     const wrongPin = executePlatformCommand(
       created.state,
-      { type: 'JOIN_PARTICIPANT', input: { roomCode: 'VIBE26', nickname: '새  별', pin: '9999' } },
+      { type: 'JOIN_PARTICIPANT', input: { entryMode: 'reenter', roomCode: 'VIBE26', nickname: '새  별', pin: '9999' } },
       env,
     )
     expect(wrongPin.result).toMatchObject({ ok: false, error: { code: 'PIN_MISMATCH' } })
 
     const reentered = executePlatformCommand(
       created.state,
-      { type: 'JOIN_PARTICIPANT', input: { roomCode: 'VIBE26', nickname: '새 별', pin: '0042' } },
+      { type: 'JOIN_PARTICIPANT', input: { entryMode: 'reenter', roomCode: 'VIBE26', nickname: '새 별', pin: '0042' } },
       env,
     )
     expect(reentered.result.ok).toBe(true)
     expect(reentered.state.participants).toHaveLength(created.state.participants.length)
+
+    const missingReentry = executePlatformCommand(
+      created.state,
+      { type: 'JOIN_PARTICIPANT', input: { entryMode: 'reenter', roomCode: 'VIBE26', nickname: '없는 별', pin: '0042' } },
+      env,
+    )
+    expect(missingReentry.result).toMatchObject({
+      ok: false,
+      error: { code: 'REENTRY_NOT_FOUND' },
+    })
+    expect(missingReentry.state.participants).toHaveLength(created.state.participants.length)
   })
 
   it('rejects a new participant when the room reaches 100 people', () => {
@@ -48,7 +69,7 @@ describe('participant entry', () => {
     const full = { ...seed, participants: [...seed.participants, ...fillers] }
     const outcome = executePlatformCommand(
       full,
-      { type: 'JOIN_PARTICIPANT', input: { roomCode: 'VIBE26', nickname: '마지막', pin: '1234' } },
+      { type: 'JOIN_PARTICIPANT', input: { entryMode: 'register', roomCode: 'VIBE26', nickname: '마지막', pin: '1234' } },
       env,
     )
     expect(outcome.result).toMatchObject({ ok: false, error: { code: 'ROOM_FULL' } })

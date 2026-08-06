@@ -106,7 +106,7 @@ export function normalizeRoomCode(value: string): string {
 
 export function normalizePin(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}$/.test(value)) {
-    throw new HttpsError('invalid-argument', 'PIN은 숫자 4자리여야 합니다.')
+    throw new HttpsError('invalid-argument', '개인 입장코드는 숫자 4자리여야 합니다.')
   }
   return value
 }

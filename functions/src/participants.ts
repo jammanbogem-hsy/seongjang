@@ -124,6 +124,11 @@ export const joinOrReenterParticipant = onCall(
     )
     const roomCode = normalizeRoomCode(requiredString(input, 'roomCode', { max: 12 }))
     const deviceId = requiredString(input, 'deviceId', { min: 12, max: 180, label: '기기 식별자' })
+    // Keep the legacy automatic mode temporarily compatible with a cached
+    // client while all newly deployed clients send an explicit entry intent.
+    const entryMode = input.entryMode === 'register' || input.entryMode === 'reenter'
+      ? input.entryMode
+      : 'auto'
     const pin = normalizePin(input.pin)
     const { nickname, normalizedNickname } = normalizeNickname(
       requiredString(input, 'nickname', { max: 64 }),
@@ -136,7 +141,7 @@ export const joinOrReenterParticipant = onCall(
     const roomCodeRef = db.doc(`roomCodes/${roomCode}`)
     const roomCodeSnapshot = await roomCodeRef.get()
     if (!roomCodeSnapshot.exists) {
-      throw new HttpsError('not-found', '방 코드 또는 닉네임과 PIN을 다시 확인해주세요.')
+      throw new HttpsError('not-found', '방 코드 또는 닉네임과 개인 입장코드를 다시 확인해주세요.')
     }
     const eventId = safeDocumentId(String(roomCodeSnapshot.get('eventId')), '행사 ID')
     const eventRef = db.doc(`events/${eventId}`)
@@ -182,6 +187,12 @@ export const joinOrReenterParticipant = onCall(
       }
 
       if (indexSnapshot.exists) {
+        if (entryMode === 'register') {
+          throw new HttpsError(
+            'already-exists',
+            '이미 사용 중인 닉네임입니다. 이전 참여자라면 ‘다시 입장’을 선택해주세요.',
+          )
+        }
         const participantUid = safeDocumentId(
           String(indexSnapshot.get('participantUid')),
           '참여자 ID',
@@ -292,11 +303,18 @@ export const joinOrReenterParticipant = onCall(
         }
       }
 
+      if (entryMode === 'reenter') {
+        throw new HttpsError(
+          'not-found',
+          '이 세션에 등록된 닉네임을 찾지 못했습니다. 닉네임을 확인하거나 ‘처음 입장’을 선택해주세요.',
+        )
+      }
+
       const participantCount = Number(eventSnapshot.get('participantCount') ?? 0)
       if (eventSnapshot.get('registrationOpen') === false) {
         throw new HttpsError(
           'failed-precondition',
-          '신규 참여자 입장이 마감되었습니다. 기존 닉네임과 PIN으로는 재입장할 수 있습니다.',
+          '신규 참여자 입장이 마감되었습니다. 기존 닉네임과 개인 입장코드로는 다시 입장할 수 있습니다.',
         )
       }
       const configuredCapacity = Number(eventSnapshot.get('capacity') ?? MAX_PARTICIPANTS)
@@ -425,7 +443,7 @@ export const joinOrReenterParticipant = onCall(
       if (result.locked) {
         throw new HttpsError('resource-exhausted', '입장 시도가 잠시 잠겼습니다. 15분 뒤 다시 시도해주세요.')
       }
-      throw new HttpsError('unauthenticated', '방 코드, 닉네임 또는 PIN을 다시 확인해주세요.')
+      throw new HttpsError('unauthenticated', '방 코드, 닉네임 또는 개인 입장코드를 다시 확인해주세요.')
     }
 
     const token = await auth.createCustomToken(result.participantUid, {
@@ -436,6 +454,9 @@ export const joinOrReenterParticipant = onCall(
     return {
       customToken: token,
       eventId: result.eventId,
+      notice: result.created
+        ? '닉네임과 개인 입장코드가 등록되었습니다.'
+        : '닉네임과 개인 입장코드를 확인했습니다. 이전 기록을 이어서 엽니다.',
       participant: {
         id: result.participantUid,
         nickname: result.nickname,

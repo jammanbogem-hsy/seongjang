@@ -172,14 +172,21 @@ export function executePlatformCommand(
         return error(state, 'INVALID_NICKNAME', '닉네임은 2자 이상 16자 이하로 입력해주세요.')
       }
       if (!isPin(command.input.pin)) {
-        return error(state, 'INVALID_PIN', 'PIN은 숫자 4자리여야 해요.')
+        return error(state, 'INVALID_PIN', '개인 입장코드는 숫자 4자리여야 해요.')
       }
       const existing = state.participants.find(
         (participant) => participant.normalizedNickname === normalizedNickname,
       )
       if (existing) {
+        if (command.input.entryMode === 'register') {
+          return error(
+            state,
+            'NICKNAME_TAKEN',
+            '이미 사용 중인 닉네임이에요. 이전 참여자라면 ‘다시 입장’을 선택해주세요.',
+          )
+        }
         if (existing.pin !== command.input.pin) {
-          return error(state, 'PIN_MISMATCH', '닉네임은 맞지만 PIN이 일치하지 않아요. 관리자에게 문의해주세요.')
+          return error(state, 'PIN_MISMATCH', '닉네임은 맞지만 개인 입장코드가 일치하지 않아요. 관리자에게 문의해주세요.')
         }
         const reentered = { ...existing, eventId: existing.eventId ?? state.room.id, status: 'online' as const, lastSeenAt: nowIso }
         return success(
@@ -191,11 +198,18 @@ export function executePlatformCommand(
             ),
           },
           reentered,
-          '이전 기록을 이어서 입장했어요.',
+          '닉네임과 개인 입장코드를 확인했어요. 이전 기록을 이어서 엽니다.',
+        )
+      }
+      if (command.input.entryMode === 'reenter') {
+        return error(
+          state,
+          'REENTRY_NOT_FOUND',
+          '이 세션에 등록된 닉네임을 찾지 못했어요. 닉네임을 확인하거나 ‘처음 입장’을 선택해주세요.',
         )
       }
       if (state.room.lifecycle === 'live' || state.room.lifecycle === 'ended') {
-        return error(state, 'NOT_ALLOWED', '신규 참여자 입장이 마감되었습니다. 기존 닉네임과 PIN으로 재입장해주세요.')
+        return error(state, 'NOT_ALLOWED', '신규 참여자 입장이 마감되었습니다. 기존 닉네임과 개인 입장코드로 다시 입장해주세요.')
       }
       if (state.participants.length >= state.room.capacity) {
         return error(state, 'ROOM_FULL', `이 방은 최대 ${state.room.capacity}명까지 참여할 수 있어요.`)
@@ -215,7 +229,7 @@ export function executePlatformCommand(
         state,
         { ...state, participants: [...state.participants, created] },
         created,
-        '입장이 완료됐어요. 이 브라우저에 참여 정보를 기억할게요.',
+        '닉네임과 개인 입장코드가 등록됐어요. 이 브라우저에 참여 정보를 기억할게요.',
       )
     }
 

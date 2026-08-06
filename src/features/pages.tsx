@@ -13,6 +13,7 @@ import type {
   Answer,
   CreateSlideInput,
   Participant,
+  ParticipantEntryMode,
   PublicProject,
   Slide,
   Submission,
@@ -134,11 +135,13 @@ function ParticipantIdentityGate({
   description,
   illustration,
   onCreate,
+  onReenter,
   title,
 }: {
   description: string
   illustration: 'lobby' | 'submission'
   onCreate: () => void
+  onReenter: () => void
   title: string
 }) {
   return (
@@ -153,7 +156,16 @@ function ParticipantIdentityGate({
         onClick={onCreate}
         size="lg"
       >
-        새 닉네임 만들기
+        처음 입장
+      </Button>
+      <Button
+        className="identity-gate__secondary"
+        leadingIcon="login"
+        onClick={onReenter}
+        size="lg"
+        variant="outlined"
+      >
+        기존 닉네임으로 다시 입장
       </Button>
     </Card>
   )
@@ -359,12 +371,17 @@ export function OrganizerSessionsPage() {
 
 export function JoinPage() {
   const navigate = useNavigate()
+  const { search } = useLocation()
   const { roomCode = '' } = useParams()
   const { joinParticipant, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
+  const [entryMode, setEntryMode] = useState<ParticipantEntryMode>(() => (
+    new URLSearchParams(search).get('mode') === 'reenter' ? 'reenter' : 'register'
+  ))
   const [nickname, setNickname] = useState('')
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
+  const [joining, setJoining] = useState(false)
   const participantCount = state.participants.length ||
     state.room.participantCount ||
     state.publishedSnapshot?.data.metrics.participantCount ||
@@ -372,14 +389,27 @@ export function JoinPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    const result = await joinParticipant({ roomCode, nickname, pin })
-    if (result.ok) {
-      notify(result.notice ?? '입장했어요.')
-      navigate(`/events/${result.value.eventId ?? state.room.id}/live`)
-      return
+    setJoining(true)
+    setError('')
+    try {
+      const result = await joinParticipant({ entryMode, roomCode, nickname, pin })
+      if (result.ok) {
+        notify(result.notice ?? '입장했어요.')
+        navigate(`/events/${result.value.eventId ?? state.room.id}/live`)
+        return
+      }
+      setError(result.error.message)
+    } finally {
+      setJoining(false)
     }
-    setError(result.error.message)
   }
+
+  function selectEntryMode(nextMode: ParticipantEntryMode) {
+    setEntryMode(nextMode)
+    setError('')
+  }
+
+  const isReentry = entryMode === 'reenter'
 
   return (
     <PublicShell>
@@ -387,13 +417,38 @@ export function JoinPage() {
         <div className="join-layout">
           <Card className="join-panel" padding="lg">
             <span className="eyebrow">ROOM · {roomCode.toUpperCase()}</span>
-            <h1 className="join-title">다시 만날 수 있는 이름을 만들어주세요.</h1>
-            <p className="muted join-description">닉네임과 숫자 4자리 PIN으로 처음 등록하거나 이전 작업을 이어서 엽니다.</p>
+            <h1 className="join-title">
+              {isReentry ? '이전 기록으로 다시 입장하세요.' : '닉네임과 입장코드를 만들어주세요.'}
+            </h1>
+            <p className="muted join-description">
+              {isReentry
+                ? '처음 등록한 닉네임과 개인 입장코드 4자리를 그대로 입력하세요.'
+                : '이 세션에서 사용할 닉네임과 기억하기 쉬운 숫자 4자리 개인 입장코드를 정합니다.'}
+            </p>
+            <div aria-label="입장 방법" className="join-mode-switch" role="group">
+              <Button
+                aria-pressed={!isReentry}
+                fullWidth
+                leadingIcon="person_add"
+                onClick={() => selectEntryMode('register')}
+                variant={!isReentry ? 'tonal' : 'text'}
+              >
+                처음 입장
+              </Button>
+              <Button
+                aria-pressed={isReentry}
+                fullWidth
+                leadingIcon="login"
+                onClick={() => selectEntryMode('reenter')}
+                variant={isReentry ? 'tonal' : 'text'}
+              >
+                다시 입장
+              </Button>
+            </div>
             <form className="form-grid" onSubmit={submit}>
               <Field label="방 코드" readOnly value={roomCode.toUpperCase()} />
               <Field
                 autoComplete="nickname"
-                error={error || undefined}
                 label="닉네임"
                 maxLength={16}
                 onChange={(event) => { setNickname(event.target.value); setError('') }}
@@ -402,10 +457,12 @@ export function JoinPage() {
                 value={nickname}
               />
               <Field
-                autoComplete="current-password"
-                helpText="선행 0도 유지됩니다. 같은 닉네임으로 재입장할 때 필요해요."
+                autoComplete={isReentry ? 'current-password' : 'new-password'}
+                helpText={isReentry
+                  ? '처음 입장할 때 등록한 숫자 4자리를 입력하세요.'
+                  : '튕기거나 다른 기기에서 다시 입장할 때 필요합니다.'}
                 inputMode="numeric"
-                label="PIN 4자리"
+                label={isReentry ? '기존 개인 입장코드 4자리' : '개인 입장코드 4자리 만들기'}
                 maxLength={4}
                 onChange={(event) => { setPin(event.target.value.replace(/\D/g, '').slice(0, 4)); setError('') }}
                 pattern="\d{4}"
@@ -414,7 +471,17 @@ export function JoinPage() {
                 type="password"
                 value={pin}
               />
-              <Button fullWidth size="lg" trailingIcon="arrow_forward" type="submit">입장하고 시작하기</Button>
+              {error ? <p className="join-form-error" role="alert"><Icon name="error" size="sm" />{error}</p> : null}
+              <Button
+                disabled={nickname.trim().length < 2 || pin.length !== 4}
+                fullWidth
+                loading={joining}
+                size="lg"
+                trailingIcon="arrow_forward"
+                type="submit"
+              >
+                {isReentry ? '이전 기록으로 다시 입장' : '닉네임 등록하고 입장'}
+              </Button>
             </form>
           </Card>
           <div className="join-art">
@@ -427,7 +494,7 @@ export function JoinPage() {
           </div>
         </div>
         <OutcomeNote>
-          <strong>PIN 보관 안내</strong><br />PIN은 다시 입장하거나 주최자에게 참여 지원을 받을 때 사용됩니다. 잊지 않도록 안전한 곳에 보관해주세요.
+          <strong>개인 입장코드 보관 안내</strong><br />개인 입장코드는 다시 접속하거나 주최자에게 참여 지원을 받을 때 사용됩니다. 닉네임과 함께 기억해주세요.
         </OutcomeNote>
       </main>
       {renderToasts()}
@@ -640,9 +707,10 @@ export function ParticipantLivePage() {
       <ParticipantShell>
         <main className="page narrow" id="main-content">
           <ParticipantIdentityGate
-            description="각자 만든 닉네임과 PIN으로 답변과 개인 작품을 안전하게 이어갑니다."
+            description="처음에는 닉네임과 개인 입장코드를 만들고, 다시 접속할 때 같은 정보로 이전 기록을 이어갑니다."
             illustration="lobby"
-            onCreate={() => navigate(`/join/${state.room.code}`)}
+            onCreate={() => navigate(`/join/${state.room.code}?mode=register`)}
+            onReenter={() => navigate(`/join/${state.room.code}?mode=reenter`)}
             title="나만의 참여자 이름으로 시작하세요."
           />
         </main>
@@ -1104,9 +1172,10 @@ export function SubmissionPage() {
       <ParticipantShell>
         <main className="page narrow" id="main-content">
           <ParticipantIdentityGate
-            description="각자의 작품을 분리해 보관하기 위해 먼저 나만의 닉네임과 PIN을 만들어주세요."
+            description="처음에는 닉네임과 개인 입장코드를 만들고, 다시 접속할 때 같은 정보로 작품을 이어갑니다."
             illustration="submission"
-            onCreate={() => navigate(`/join/${state.room.code}`)}
+            onCreate={() => navigate(`/join/${state.room.code}?mode=register`)}
+            onReenter={() => navigate(`/join/${state.room.code}?mode=reenter`)}
             title="개인 작품을 위한 이름을 만들어주세요."
           />
         </main>

@@ -186,7 +186,7 @@ export function ParticipantShell({ children }: { children: ReactNode }) {
       <div className="session-strip" role="status">
         <span className="session-strip__signal"><Icon filled name="sensors" size="sm" /></span>
         <strong>{currentParticipant?.nickname ?? '입장 전'}</strong>
-        <span>{currentParticipant ? '님의 참여 화면 · 주최자의 진행과 실시간으로 동기화됩니다' : '· 닉네임과 PIN을 만들면 행사에 참여할 수 있습니다'}</span>
+        <span>{currentParticipant ? '님의 참여 화면 · 주최자의 진행과 실시간으로 동기화됩니다' : '· 닉네임과 개인 입장코드를 만들면 행사에 참여할 수 있습니다'}</span>
         <Icon name="sync" size="sm" />
       </div>
       {children}

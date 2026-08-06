@@ -22,7 +22,7 @@ describe('organizer and participant domain workflow', () => {
     state.room.lifecycle = 'lobby'
     const joined = executePlatformCommand(
       state,
-      { type: 'JOIN_PARTICIPANT', input: { roomCode: 'VIBE26', nickname: '검증 별빛', pin: '2468' } },
+      { type: 'JOIN_PARTICIPANT', input: { entryMode: 'register', roomCode: 'VIBE26', nickname: '검증 별빛', pin: '2468' } },
       env,
     )
     expect(joined.result.ok).toBe(true)

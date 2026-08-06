@@ -3,6 +3,7 @@ export const ROOM_CAPACITY = 100 as const
 
 export type Identifier = string
 export type ParticipantStatus = 'online' | 'offline'
+export type ParticipantEntryMode = 'register' | 'reenter'
 export type TimerStatus = 'idle' | 'running' | 'paused' | 'complete'
 export type AnswerStatus = 'draft' | 'submitted'
 export type SubmissionStatus = 'draft' | 'submitted'
@@ -258,6 +259,8 @@ export type CommandErrorCode =
   | 'INVALID_NICKNAME'
   | 'INVALID_PIN'
   | 'PIN_MISMATCH'
+  | 'NICKNAME_TAKEN'
+  | 'REENTRY_NOT_FOUND'
   | 'ROOM_FULL'
   | 'NOT_FOUND'
   | 'NOT_ALLOWED'
@@ -276,6 +279,7 @@ export type CommandResult<T = undefined> =
   | { ok: false; error: CommandError }
 
 export interface JoinParticipantInput {
+  entryMode: ParticipantEntryMode
   roomCode: string
   nickname: string
   pin: string

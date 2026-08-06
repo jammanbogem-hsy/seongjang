@@ -730,6 +730,45 @@ select:focus-visible,
   letter-spacing: -.04em;
 }
 
+.join-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0 0 24px;
+  padding: 4px;
+  border: 1px solid var(--outline);
+  border-radius: 24px;
+  background: var(--surface-container);
+}
+
+.join-mode-switch .ui-button {
+  min-width: 0;
+  border-radius: 20px;
+  box-shadow: none;
+}
+
+.join-mode-switch .ui-button[aria-pressed='true'] {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.join-form-error {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.identity-gate__secondary {
+  margin-top: 8px;
+}
+
 /* Live workshop and participant writing */
 .session-strip {
   min-height: 44px;
