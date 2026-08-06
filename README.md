@@ -13,6 +13,8 @@ npm run dev
 
 브라우저에서 `http://127.0.0.1:5173`을 엽니다. 운영 배포 주소는 [vibecoding-a3ada.web.app](https://vibecoding-a3ada.web.app)입니다. 주최자가 세션을 만들 때마다 겹치지 않는 새 방 코드가 자동 발급됩니다.
 
+로컬 개발도 기본적으로 공유 Firebase 프로젝트에 연결됩니다. 로컬 Emulator를 실행할 때만 `VITE_USE_FIREBASE_EMULATORS=true npm run dev`로 명시합니다.
+
 품질 검사는 아래 명령으로 실행합니다.
 
 ```bash
@@ -41,7 +43,7 @@ npm --prefix functions run check
 - `/exhibitions/:slug` — 세션별 개인 작품 전시
 
 주최자는 Canva처럼 하단 페이지뷰에서 슬라이드를 추가·복제·삭제하고 드래그 앤 드롭으로 순서를 바꿀 수 있으며, 단계명·제목·질문·도움말을 실시간 편집할 수 있습니다. 단계별 타이머(1–180분)와 답변·댓글 공개 상태를 바꾸면 Cloud Functions가 권한을 검증하고 Firestore 트랜잭션으로 갱신하며, 연결된 참여자 화면은 실시간 listener로 같은 상태를 받습니다. 슬라이드 텍스트는 0.9초 디바운스로 자동 저장되고 타이머 시간은 슬라이드 기본값으로 유지됩니다. 답변이나 초안이 있는 슬라이드와 타이머가 진행 중인 현재 슬라이드는 기록 보호를 위해 삭제할 수 없습니다.
-첫 타이머를 시작하거나 재개하면 신규 닉네임 등록은 서버에서 마감되고, 기존 참여자의 닉네임·4자리 PIN 재입장은 계속 허용됩니다.
+주최자가 큰 `세션 시작` CTA를 누르면 첫 슬라이드·타이머·행사 상태가 한 트랜잭션으로 열리고 신규 닉네임 등록은 마감됩니다. 기존 참여자의 닉네임·4자리 PIN 재입장은 계속 허용됩니다.
 세션을 종료하면 참여자 멤버십이 비활성화되어 접속 중인 화면도 즉시 퇴장하고, 주최자의 세션 카드는 수합·전시·내보내기 기록을 계속 보존합니다.
 세션별 Firestore 경계와 생명주기, 레거시 호환 정책은 [다회성 세션 아키텍처](docs/MULTI_SESSION_ARCHITECTURE.md)에 정리했습니다.
 
@@ -81,7 +83,7 @@ firebase deploy --only firestore:rules,firestore:indexes,functions,hosting
 
 Functions의 공개 설정은 `functions/.env.vibecoding-a3ada`, PIN 암호화 키는 Firebase Secret Manager의 `PARTICIPANT_SECRET_KEY`에서 관리합니다. 비밀값은 저장소에 포함하지 않습니다.
 
-운영 Functions는 일반 행사 명령과 PIN·입장 인증을 서로 다른 서비스 계정으로 분리합니다. 브라우저 API 키는 두 Firebase Hosting 도메인에서만 사용할 수 있고, 운영 빌드를 로컬에서 열면 실제 데이터 대신 Emulator 연결을 요구합니다. 배포 후 주최자는 `/admin/sessions`에서 세션을 만들고, 발급된 방 코드만 참여자에게 전달합니다. 참여자는 각자 닉네임과 4자리 PIN을 정해 입장합니다.
+운영 Functions는 일반 행사 명령과 PIN·입장 인증을 서로 다른 서비스 계정으로 분리합니다. 로컬 Emulator는 환경 변수로 명시한 경우에만 연결되며, 그 외 개발·배포 화면은 동일한 Firebase 프로젝트를 사용합니다. 배포 후 주최자는 `/admin/sessions`에서 세션을 만들고, 발급된 방 코드만 참여자에게 전달합니다. 참여자는 각자 닉네임과 4자리 PIN을 정해 입장합니다.
 
 운영 무료 구간, 예산 알림, 과금 위험과 행사 전후 확인사항은 [Firebase 운영 비용 가드](docs/FIREBASE_COSTS.md)에 정리했습니다.
 

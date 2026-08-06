@@ -375,7 +375,7 @@ export function JoinPage() {
     const result = await joinParticipant({ roomCode, nickname, pin })
     if (result.ok) {
       notify(result.notice ?? '입장했어요.')
-      navigate(`/events/${result.value.eventId}/live`)
+      navigate(`/events/${result.value.eventId ?? state.room.id}/live`)
       return
     }
     setError(result.error.message)
@@ -518,7 +518,7 @@ export function ParticipantLivePage() {
     ? (commentEditDrafts[editingCommentId] ?? editingComment?.body ?? '')
     : ''
   const answerAutosave = useAutosave({
-    enabled: Boolean(currentParticipant && !answerDraftHasConflict),
+    enabled: Boolean(currentParticipant && state.room.lifecycle !== 'lobby' && !answerDraftHasConflict),
     // Server acknowledgements advance the stored base revision without being
     // new edits. Keep them out of the fingerprint so the UI does not start a
     // redundant debounce cycle after a successful save. An explicit conflict
@@ -569,14 +569,14 @@ export function ParticipantLivePage() {
     },
   })
   const commentAutosave = useAutosave({
-    enabled: Boolean(currentParticipant && commentTarget && commentText),
+    enabled: Boolean(currentParticipant && state.room.lifecycle !== 'lobby' && commentTarget && commentText),
     fingerprint: `${commentTarget ?? ''}:${commentText}`,
     save: () => commentTarget
       ? savePrivateDraft('comment', commentTarget, { body: commentText })
       : false,
   })
   const commentEditAutosave = useAutosave({
-    enabled: Boolean(currentParticipant && editingCommentId && editingCommentText),
+    enabled: Boolean(currentParticipant && state.room.lifecycle !== 'lobby' && editingCommentId && editingCommentText),
     fingerprint: `${editingCommentId ?? ''}:${editingCommentText}`,
     save: () => editingCommentId
       ? savePrivateDraft('comment-edit', editingCommentId, { body: editingCommentText })
@@ -650,6 +650,33 @@ export function ParticipantLivePage() {
     )
   }
   const participant = currentParticipant
+
+  if (state.room.lifecycle === 'lobby') {
+    const participantCount = Math.max(state.participants.length, state.room.participantCount ?? 0)
+    return (
+      <ParticipantShell>
+        <main className="participant-waiting" id="main-content">
+          <Card className="participant-waiting__card" padding="lg">
+            <StatusChip label="입장 완료 · 실시간 연결" status="ready" />
+            <CatIllustration decorative size="md" variant="lobby" />
+            <div className="participant-waiting__copy">
+              <h1>세션 시작을 기다리고 있어요</h1>
+              <p>주최자가 시작하면 첫 번째 슬라이드가 자동으로 열립니다. 이 화면을 그대로 두세요.</p>
+            </div>
+            <div className="participant-waiting__meta">
+              <strong>{participant.nickname}</strong>
+              <span aria-hidden="true">·</span>
+              <span>방 {state.room.code}</span>
+              <span aria-hidden="true">·</span>
+              <output aria-atomic="true" aria-live="polite">현재 {participantCount}명 입장</output>
+            </div>
+            <div aria-label="주최자 시작 대기 중" className="participant-waiting__progress" role="progressbar" />
+          </Card>
+        </main>
+        {renderToasts()}
+      </ParticipantShell>
+    )
+  }
 
   async function saveAnswer(submit = true) {
     const ok = announceResult(
@@ -1174,6 +1201,7 @@ export function OrganizerControlPage() {
   const [draggedSlideId, setDraggedSlideId] = useState<string | null>(null)
   const [dragOverSlideId, setDragOverSlideId] = useState<string | null>(null)
   const [reorderingSlides, setReorderingSlides] = useState(false)
+  const [startingSession, setStartingSession] = useState(false)
   const [endSessionOpen, setEndSessionOpen] = useState(false)
   const [endingSession, setEndingSession] = useState(false)
   const [createSlideDraft, setCreateSlideDraft] = useState<CreateSlideInput>({
@@ -1185,6 +1213,7 @@ export function OrganizerControlPage() {
     illustration: '/assets/illustrations/cat-ideation.webp',
   })
   const [durationMinutes, setDurationMinutes] = useState(() => String(Math.round(currentSlide.durationSec / 60)))
+  const knownParticipantIdsRef = useRef<Set<string> | null>(null)
   const [slideEditorOpen, setSlideEditorOpen] = useState(false)
   const [slideDraft, setSlideDraft] = useState<UpdateSlideInput>(() => ({
     slideId: currentSlide.id,
@@ -1198,6 +1227,9 @@ export function OrganizerControlPage() {
   const recentlyActiveCount = state.participants.filter(
     (participant) => Date.now() - Date.parse(participant.lastSeenAt) < 15 * 60_000,
   ).length
+  const latestParticipant = state.participants.reduce<Participant | null>((latest, participant) => (
+    !latest || Date.parse(participant.joinedAt) > Date.parse(latest.joinedAt) ? participant : latest
+  ), null)
   const stageAnswerCount = state.answers.filter((answer) => answer.slideId === currentSlide.id && answer.status === 'submitted').length
   const stageAnswers = state.answers.filter((answer) => answer.slideId === currentSlide.id && answer.status === 'submitted')
   const submittedCount = state.submissions.filter((submission) => submission.status === 'submitted').length
@@ -1255,6 +1287,17 @@ export function OrganizerControlPage() {
       setDurationMinutes(String(Math.round(state.live.timer.durationSec / 60)))
     }
   }, [state.live.timer.durationSec, timerView.status])
+
+  useEffect(() => {
+    const nextIds = new Set(state.participants.map((participant) => participant.id))
+    const knownIds = knownParticipantIdsRef.current
+    if (knownIds) {
+      const joined = state.participants.filter((participant) => !knownIds.has(participant.id))
+      if (joined.length === 1) notify(`${joined[0].nickname}님이 입장했습니다.`)
+      if (joined.length > 1) notify(`${joined.length}명이 새로 입장했습니다.`)
+    }
+    knownParticipantIdsRef.current = nextIds
+  }, [notify, state.participants])
 
   const closeSlideEditor = useCallback(async () => {
     if (!slideDraftDirty) {
@@ -1377,6 +1420,16 @@ export function OrganizerControlPage() {
     }
   }
 
+  async function startSession() {
+    if (startingSession) return
+    setStartingSession(true)
+    try {
+      announceResult(await dispatchAsync({ type: 'START_SESSION' }), notify)
+    } finally {
+      setStartingSession(false)
+    }
+  }
+
   async function applyTimerDuration(minutes = Number(durationMinutes)) {
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
       notify('타이머는 1분에서 180분 사이의 정수로 입력해주세요.', 'danger')
@@ -1394,7 +1447,10 @@ export function OrganizerControlPage() {
       <AdminLayout
         actions={(
           <div className="button-row session-control-actions">
-            <StatusChip label={state.room.lifecycle === 'ended' ? '세션 종료됨' : '실시간 동기화'} status={state.room.lifecycle === 'ended' ? 'complete' : 'live'} />
+            <StatusChip
+              label={state.room.lifecycle === 'ended' ? '세션 종료됨' : state.room.lifecycle === 'lobby' ? '참여자 입장 대기' : '실시간 동기화'}
+              status={state.room.lifecycle === 'ended' ? 'complete' : state.room.lifecycle === 'lobby' ? 'waiting' : 'live'}
+            />
             {state.room.lifecycle !== 'ended' ? (
               <Button leadingIcon="stop_circle" onClick={() => setEndSessionOpen(true)} size="sm" variant="outlined">세션 종료</Button>
             ) : null}
@@ -1404,13 +1460,39 @@ export function OrganizerControlPage() {
         eyebrow={`LIVE CONTROL · REVISION ${state.revision}`}
         title="지금 모두가 보고 있는 장면"
       >
+        {state.room.lifecycle === 'lobby' ? (
+          <section aria-labelledby="session-start-title" className="session-start-panel">
+            <div className="session-start-panel__copy">
+              <span className="session-start-panel__status">
+                <span aria-hidden="true" className="live-dot" />
+                참여자 입장 중
+              </span>
+              <h2 id="session-start-title">
+                <output aria-atomic="true" aria-live="polite">{state.participants.length}명 입장</output>
+              </h2>
+              <p>최근 활동 {recentlyActiveCount}명 · 정원 {state.room.capacity}명</p>
+              <p className="session-start-panel__latest" aria-live="polite">
+                {latestParticipant ? `마지막 입장 · ${latestParticipant.nickname}` : '참여자가 입장하면 이곳에 바로 표시됩니다.'}
+              </p>
+            </div>
+            <div className="session-start-panel__action">
+              <Button
+                className="session-start-panel__cta"
+                leadingIcon="play_arrow"
+                loading={startingSession}
+                onClick={() => { void startSession() }}
+                size="lg"
+              >세션 시작</Button>
+              <span>첫 슬라이드와 타이머가 모든 참여자에게 열립니다.</span>
+            </div>
+          </section>
+        ) : null}
         <div className="grid four">
           <StatCard detail={`정원 ${state.room.capacity}명`} icon="groups" label="입장 참여자" trend={`${recentlyActiveCount}명 최근 활동`} value={`${state.participants.length}명`} />
           <StatCard detail="현재 단계" icon="edit_note" label="개인 답변" trend={`${stageAnswerCount}개 수합`} trendTone="primary" value={`${state.participants.length ? Math.round((stageAnswerCount / state.participants.length) * 100) : 0}%`} />
           <StatCard detail="공개 후 댓글" icon="forum" label="댓글" trend={commentsEnabled ? '작성 열림' : '잠김'} trendTone={commentsEnabled ? 'success' : 'neutral'} value={`${state.comments.length}개`} />
           <StatCard detail="모두 개인 작품" icon="rocket_launch" label="최종 제출" trend={`${state.participants.length - submittedCount}명 남음`} trendTone="warning" value={`${submittedCount}개`} />
         </div>
-        <OutcomeNote><strong>입장 마감 안내</strong><br />참여자 입장을 확인한 뒤 첫 타이머를 시작하거나 재개하면 새 닉네임 등록은 마감됩니다. 기존 참여자의 PIN 재입장은 계속 가능합니다.</OutcomeNote>
 
         <div className="live-console">
           <section className="stage-card" aria-live="polite">
@@ -1470,7 +1552,9 @@ export function OrganizerControlPage() {
               <div className="divider" />
               <div className="control-pad">
                 <IconButton disabled={state.live.activeSlideIndex === 0} icon="arrow_back" label="이전 슬라이드" onClick={() => move(-1)} variant="outlined" />
-                {timerView.status === 'running' ? (
+                {state.room.lifecycle === 'lobby' ? (
+                  <Button disabled leadingIcon="hourglass_top">세션 시작 전</Button>
+                ) : timerView.status === 'running' ? (
                   <Button leadingIcon="pause" onClick={() => run({ type: 'PAUSE_TIMER' })}>일시정지</Button>
                 ) : (
                   <Button leadingIcon="play_arrow" onClick={() => run({ type: timerView.status === 'paused' ? 'RESUME_TIMER' : 'START_TIMER' })}>시작</Button>

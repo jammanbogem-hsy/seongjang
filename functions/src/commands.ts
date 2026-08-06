@@ -105,6 +105,9 @@ function assertAnswerWindow(
   slideId: string,
   allowPreviousSlideGrace = false,
 ): void {
+  if (live.get('sessionStatus') !== 'live') {
+    throw new HttpsError('failed-precondition', '주최자가 세션을 시작한 뒤 답변할 수 있습니다.')
+  }
   const draftGraceUntil = live.get('draftGraceUntil')
   const withinPreviousSlideGrace = allowPreviousSlideGrace
     && live.get('previousSlideId') === slideId
@@ -266,6 +269,72 @@ async function updateTimer(
       ? '타이머를 초기화했습니다.'
       : '타이머를 시작했습니다.'
   return success(value, notice)
+}
+
+async function startSession(
+  eventId: string,
+  actor: EventActor,
+): Promise<CommandSuccess> {
+  const { publicRootPath } = await eventAndPublicRoot(eventId)
+  const eventRef = db.doc(`events/${eventId}`)
+  const liveRef = db.doc(eventPath(eventId, 'live/state'))
+  const publicRootRef = db.doc(publicRootPath)
+  const firstSlideQuery = db.collection(eventPath(eventId, 'slides')).orderBy('order', 'asc').limit(1)
+  const value = await db.runTransaction(async (transaction) => {
+    const [event, live, firstSlides] = await Promise.all([
+      transaction.get(eventRef),
+      transaction.get(liveRef),
+      transaction.get(firstSlideQuery),
+    ])
+    if (!event.exists || !live.exists) {
+      throw new HttpsError('not-found', '세션 진행 정보를 찾을 수 없습니다.')
+    }
+    if (event.get('lifecycle') === 'live') {
+      return live.data()
+    }
+    if (event.get('lifecycle') !== 'lobby') {
+      throw new HttpsError('failed-precondition', '입장 대기 중인 세션만 시작할 수 있습니다.')
+    }
+    const firstSlide = firstSlides.docs[0]
+    if (!firstSlide?.exists) throw new HttpsError('not-found', '시작할 첫 슬라이드를 찾을 수 없습니다.')
+
+    const now = Timestamp.now()
+    const durationSec = Number(firstSlide.get('durationSec') ?? 0)
+    if (!Number.isInteger(durationSec) || durationSec < 60) {
+      throw new HttpsError('failed-precondition', '첫 슬라이드의 시간을 확인해주세요.')
+    }
+    const next = {
+      ...live.data(),
+      activeSlideId: firstSlide.id,
+      activeSlideIndex: 0,
+      previousSlideId: null,
+      draftGraceUntil: null,
+      sessionStatus: 'live',
+      timerStatus: 'running',
+      durationSec,
+      remainingSec: durationSec,
+      endsAt: Timestamp.fromMillis(now.toMillis() + durationSec * 1_000),
+      startedAt: now,
+      revision: revisionOf(live),
+      updatedAt: now,
+      updatedBy: actor.uid,
+    }
+    transaction.set(liveRef, next)
+    transaction.set(eventRef, {
+      lifecycle: 'live',
+      registrationClosedAt: now,
+      registrationOpen: false,
+      updatedAt: now,
+    }, { merge: true })
+    transaction.update(
+      publicRootRef,
+      'join.live', publicLiveProjection(next),
+      'join.room.lifecycle', 'live',
+      'join.updatedAt', now,
+    )
+    return next
+  })
+  return success(value, '세션을 시작하고 참여자 화면에 첫 슬라이드를 열었습니다.')
 }
 
 async function setTimerDuration(
@@ -1459,6 +1528,7 @@ const organizerCommands = new Set([
   'SET_EXHIBITION_PUBLISHED',
   'SET_PARTICIPANT_STATUS',
   'SET_TIMER_DURATION',
+  'START_SESSION',
   'START_TIMER',
   'UPDATE_SLIDE',
   'UPDATE_SYNTHESIS',
@@ -1476,6 +1546,7 @@ const closedSessionCommands = new Set([
   'SET_ANSWERS_REVEALED',
   'SET_COMMENTS_ENABLED',
   'SET_TIMER_DURATION',
+  'START_SESSION',
   'START_TIMER',
   'UPDATE_SLIDE',
 ])
@@ -1516,9 +1587,13 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
         const status = requiredString(command, 'status', { max: 16 })
         if (status !== 'online' && status !== 'offline') throw new HttpsError('invalid-argument', '참여 상태가 올바르지 않습니다.')
         await db.doc(eventPath(eventId, `participants/${targetUid}`)).update({
-          legacyStatus: status,
+          status,
           lastSeenAt: Timestamp.now(),
         })
+        await db.doc(eventPath(eventId, `participantDirectory/${targetUid}`)).set({
+          status,
+          lastSeenAt: Timestamp.now(),
+        }, { merge: true })
         result = success({ id: targetUid, status }, '참여자 상태를 기록했습니다.')
         break
       }
@@ -1542,6 +1617,9 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
         break
       case 'SET_TIMER_DURATION':
         result = await setTimerDuration(eventId, command, actor)
+        break
+      case 'START_SESSION':
+        result = await startSession(eventId, actor)
         break
       case 'START_TIMER':
       case 'PAUSE_TIMER':

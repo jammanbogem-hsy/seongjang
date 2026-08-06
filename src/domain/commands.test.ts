@@ -8,6 +8,7 @@ const env = { now: () => Date.parse('2026-08-05T01:00:00.000Z'), createId: (pref
 describe('participant entry', () => {
   it('creates a new participant and re-enters only with the same PIN', () => {
     const seed = createSeedState()
+    seed.room.lifecycle = 'lobby'
     const created = executePlatformCommand(
       seed,
       { type: 'JOIN_PARTICIPANT', input: { roomCode: 'vibe26', nickname: '  새 별  ', pin: '0042' } },
@@ -16,6 +17,7 @@ describe('participant entry', () => {
     expect(created.result.ok).toBe(true)
     expect(created.state.participants).toHaveLength(seed.participants.length + 1)
     expect(created.state.participants.at(-1)?.nickname).toBe('새 별')
+    expect(created.state.participants.at(-1)?.eventId).toBe(seed.room.id)
 
     const wrongPin = executePlatformCommand(
       created.state,
@@ -35,6 +37,7 @@ describe('participant entry', () => {
 
   it('rejects a new participant when the room reaches 100 people', () => {
     const seed = createSeedState()
+    seed.room.lifecycle = 'lobby'
     const fillers: Participant[] = Array.from({ length: 100 - seed.participants.length }, (_, index) => ({
       ...seed.participants[0],
       id: `filler-${index}`,
@@ -53,6 +56,31 @@ describe('participant entry', () => {
 })
 
 describe('live controls', () => {
+  it('starts a lobby atomically on the first slide', () => {
+    const seed = createSeedState()
+    seed.room.lifecycle = 'lobby'
+    seed.live.activeSlideIndex = 2
+    seed.live.startedAt = null
+    seed.live.timer = {
+      durationSec: seed.slides[2].durationSec,
+      remainingSec: 120,
+      status: 'paused',
+      endsAt: null,
+    }
+
+    const started = executePlatformCommand(seed, { type: 'START_SESSION' }, env)
+
+    expect(started.result.ok).toBe(true)
+    expect(started.state.room.lifecycle).toBe('live')
+    expect(started.state.live.activeSlideIndex).toBe(0)
+    expect(started.state.live.startedAt).toBe('2026-08-05T01:00:00.000Z')
+    expect(started.state.live.timer).toMatchObject({
+      durationSec: seed.slides[0].durationSec,
+      remainingSec: seed.slides[0].durationSec,
+      status: 'running',
+    })
+  })
+
   it('derives timer ticks from endsAt and preserves the pause value', () => {
     const seed = createSeedState()
     const started = executePlatformCommand(seed, { type: 'START_TIMER' }, env)

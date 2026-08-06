@@ -377,6 +377,7 @@ export type PlatformCommand =
   | { type: 'REORDER_SLIDES'; orderedSlideIds: Identifier[] }
   | { type: 'END_SESSION' }
   | { type: 'SET_TIMER_DURATION'; durationSec: number }
+  | { type: 'START_SESSION' }
   | { type: 'START_TIMER' }
   | { type: 'PAUSE_TIMER' }
   | { type: 'RESUME_TIMER' }

@@ -1,9 +1,17 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PlatformProvider } from '../app/PlatformProvider'
+import { PlatformProvider, usePlatform } from '../app/PlatformProvider'
 import { RouterProvider } from '../app/router'
-import { PLATFORM_STORAGE_KEY } from '../platform/persistence'
-import { OrganizerControlPage } from './pages'
+import { createSeedState } from '../domain/seed'
+import { PARTICIPANT_SESSION_KEY, PLATFORM_STORAGE_KEY } from '../platform/persistence'
+import { OrganizerControlPage, ParticipantLivePage } from './pages'
+
+function SessionStartHarness() {
+  const { dispatch } = usePlatform()
+  return (
+    <button onClick={() => dispatch({ type: 'START_SESSION' })} type="button">세션 시작 신호</button>
+  )
+}
 
 describe('organizer live controls', () => {
   beforeEach(() => {
@@ -94,5 +102,60 @@ describe('organizer live controls', () => {
     await act(async () => { await Promise.resolve() })
     const stored = window.localStorage.getItem(PLATFORM_STORAGE_KEY) ?? ''
     expect(stored.indexOf('stage-empathy')).toBeLessThan(stored.indexOf('stage-discover'))
+  })
+
+  it('starts a lobby from the large organizer CTA', async () => {
+    const seed = createSeedState()
+    seed.room.lifecycle = 'lobby'
+    seed.live.activeSlideIndex = 2
+    seed.live.startedAt = null
+    seed.live.timer = {
+      durationSec: seed.slides[2].durationSec,
+      remainingSec: seed.slides[2].durationSec,
+      status: 'idle',
+      endsAt: null,
+    }
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <OrganizerControlPage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    expect(screen.getByText('24명 입장')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '세션 시작' }))
+    await act(async () => { await Promise.resolve() })
+
+    expect(screen.queryByRole('button', { name: '세션 시작' })).not.toBeInTheDocument()
+    const persisted = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    expect(persisted.room.lifecycle).toBe('live')
+    expect(persisted.live.activeSlideIndex).toBe(0)
+  })
+
+  it('opens the first slide when a waiting participant receives the start signal', async () => {
+    const seed = createSeedState()
+    seed.room.lifecycle = 'lobby'
+    seed.live.activeSlideIndex = 2
+    seed.live.startedAt = null
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+    window.sessionStorage.setItem(PARTICIPANT_SESSION_KEY, seed.participants[0].id)
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <ParticipantLivePage />
+          <SessionStartHarness />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    expect(screen.getByRole('heading', { name: '세션 시작을 기다리고 있어요' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '세션 시작 신호' }))
+
+    expect(screen.queryByRole('heading', { name: '세션 시작을 기다리고 있어요' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: seed.slides[0].title })).toBeInTheDocument()
   })
 })

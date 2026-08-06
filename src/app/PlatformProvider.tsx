@@ -229,6 +229,7 @@ function toFirebaseCommand(
       return { type: command.type }
     case 'SET_TIMER_DURATION':
       return { type: command.type, durationSec: command.durationSec }
+    case 'START_SESSION':
     case 'START_TIMER':
     case 'PAUSE_TIMER':
     case 'RESUME_TIMER':
@@ -375,17 +376,32 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       role: projection.role,
     })
     backendRef.current = backend
+    let connectionTimeout = window.setTimeout(() => {
+      connectionTimeout = 0
+      setBackendError('Google/Firebase 서버에 연결할 수 없습니다. 인터넷·DNS·VPN·광고 차단 설정에서 google.com과 googleapis.com 접속을 확인해주세요.')
+      setBackendPhase('error')
+    }, 12_000)
+    const clearConnectionTimeout = () => {
+      if (!connectionTimeout) return
+      window.clearTimeout(connectionTimeout)
+      connectionTimeout = 0
+    }
     const unsubscribe = backend.subscribe((snapshot) => {
       stateRef.current = snapshot.state
       setState(snapshot.state)
       setClock(Date.now())
-      setBackendPhase('ready')
       setLoadedProjectionKey(projectionKey)
+      if (!snapshot.fromCache) {
+        clearConnectionTimeout()
+        setBackendPhase('ready')
+      }
     }, (cause) => {
+      clearConnectionTimeout()
       setBackendError(cause.message)
       setBackendPhase('error')
     })
     return () => {
+      clearConnectionTimeout()
       backendRef.current = null
       unsubscribe()
     }
@@ -603,17 +619,6 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
 
   const projectionReady = standaloneRoute || loadedProjectionKey === projectionKey
 
-  if (backendPhase === 'loading' || !projectionReady) {
-    return (
-      <div className="firebase-boundary" role="status">
-        <span className="material-symbols-rounded" aria-hidden="true">cloud_sync</span>
-        <h1>Firebase 행사 데이터를 불러오고 있어요</h1>
-        <p>{membership ? '인증된 행사 자료를 안전하게 동기화하고 있습니다.' : '처음 설정하는 주최자라면 Google 계정으로 연결해주세요.'}</p>
-        {!membership && !publicOnlyRoute ? <button onClick={() => { void signInOrganizer() }} type="button">Google로 주최자 연결</button> : null}
-      </div>
-    )
-  }
-
   if (backendPhase === 'error') {
     return (
       <div className="firebase-boundary firebase-boundary--error" role="alert">
@@ -621,6 +626,17 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
         <h1>Firebase 데이터를 불러오지 못했습니다</h1>
         <p>{backendError ?? '네트워크와 행사 권한을 확인한 뒤 다시 시도해주세요.'}</p>
         <button onClick={() => window.location.reload()} type="button">다시 연결</button>
+      </div>
+    )
+  }
+
+  if (backendPhase === 'loading' || !projectionReady) {
+    return (
+      <div className="firebase-boundary" role="status">
+        <span className="material-symbols-rounded" aria-hidden="true">cloud_sync</span>
+        <h1>Firebase 행사 데이터를 불러오고 있어요</h1>
+        <p>{membership ? '인증된 행사 자료를 안전하게 동기화하고 있습니다.' : '처음 설정하는 주최자라면 Google 계정으로 연결해주세요.'}</p>
+        {!membership && !publicOnlyRoute ? <button onClick={() => { void signInOrganizer() }} type="button">Google로 주최자 연결</button> : null}
       </div>
     )
   }

@@ -66,6 +66,7 @@ export function createEmptyState(): PrototypeState {
       organizerName: 'VibeCoding 운영팀',
       eventDate: '2026-08-22',
       capacity: ROOM_CAPACITY,
+      lifecycle: 'lobby',
     },
     participants: [],
     adminInvites: [],

@@ -19,6 +19,7 @@ function run(state: PrototypeState, command: Parameters<typeof executePlatformCo
 describe('organizer and participant domain workflow', () => {
   it('projects entry, live answer, comment and project data into a publication', () => {
     let state = createSeedState()
+    state.room.lifecycle = 'lobby'
     const joined = executePlatformCommand(
       state,
       { type: 'JOIN_PARTICIPANT', input: { roomCode: 'VIBE26', nickname: '검증 별빛', pin: '2468' } },
@@ -29,6 +30,7 @@ describe('organizer and participant domain workflow', () => {
     expect(participant).not.toBeNull()
     state = joined.state
 
+    state = run(state, { type: 'START_SESSION' })
     state = run(state, { type: 'SET_ACTIVE_SLIDE', slideIndex: 3 })
     const slideId = state.slides[3].id
     state = run(state, {

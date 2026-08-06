@@ -181,7 +181,7 @@ export function executePlatformCommand(
         if (existing.pin !== command.input.pin) {
           return error(state, 'PIN_MISMATCH', '닉네임은 맞지만 PIN이 일치하지 않아요. 관리자에게 문의해주세요.')
         }
-        const reentered = { ...existing, status: 'online' as const, lastSeenAt: nowIso }
+        const reentered = { ...existing, eventId: existing.eventId ?? state.room.id, status: 'online' as const, lastSeenAt: nowIso }
         return success(
           state,
           {
@@ -194,11 +194,15 @@ export function executePlatformCommand(
           '이전 기록을 이어서 입장했어요.',
         )
       }
+      if (state.room.lifecycle === 'live' || state.room.lifecycle === 'ended') {
+        return error(state, 'NOT_ALLOWED', '신규 참여자 입장이 마감되었습니다. 기존 닉네임과 PIN으로 재입장해주세요.')
+      }
       if (state.participants.length >= state.room.capacity) {
         return error(state, 'ROOM_FULL', `이 방은 최대 ${state.room.capacity}명까지 참여할 수 있어요.`)
       }
       const created = {
         id: env.createId('participant'),
+        eventId: state.room.id,
         nickname,
         normalizedNickname,
         pin: command.input.pin,
@@ -455,6 +459,33 @@ export function executePlatformCommand(
       )
     }
 
+    case 'START_SESSION': {
+      const firstSlide = state.slides[0]
+      if (!firstSlide) return error(state, 'NOT_FOUND', '시작할 슬라이드를 찾을 수 없어요.')
+      if (state.room.lifecycle === 'live') {
+        return success(state, state, state.live.timer, '이미 시작된 세션이에요.')
+      }
+      if (state.room.lifecycle === 'ended') {
+        return error(state, 'NOT_ALLOWED', '종료된 세션은 다시 시작할 수 없어요.')
+      }
+      const timer = {
+        durationSec: firstSlide.durationSec,
+        remainingSec: firstSlide.durationSec,
+        status: 'running' as const,
+        endsAt: now + firstSlide.durationSec * 1_000,
+      }
+      return success(state, {
+        ...state,
+        room: { ...state.room, lifecycle: 'live' },
+        live: {
+          ...state.live,
+          activeSlideIndex: 0,
+          startedAt: nowIso,
+          timer,
+        },
+      }, timer, '세션을 시작하고 참여자 화면에 첫 슬라이드를 열었어요.')
+    }
+
     case 'START_TIMER':
     case 'RESUME_TIMER': {
       const timerView = getTimerView(state.live.timer, now)
@@ -568,6 +599,9 @@ export function executePlatformCommand(
 
     case 'SAVE_ANSWER': {
       const { input } = command
+      if (state.room.lifecycle === 'lobby') {
+        return error(state, 'NOT_ALLOWED', '주최자가 세션을 시작한 뒤 답변할 수 있어요.')
+      }
       if (!state.participants.some(({ id }) => id === input.participantId)) {
         return error(state, 'NOT_FOUND', '참가자 정보를 찾을 수 없어요.')
       }

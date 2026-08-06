@@ -269,7 +269,12 @@ export const joinOrReenterParticipant = onCall(
         // not reopen brute-force attempts for every caller on that network.
         transaction.set(
           db.doc(`events/${eventId}/participants/${participantUid}`),
-          { lastSeenAt: now },
+          { lastSeenAt: now, status: 'online' },
+          { merge: true },
+        )
+        transaction.set(
+          db.doc(`events/${eventId}/participantDirectory/${participantUid}`),
+          { lastSeenAt: now, status: 'online' },
           { merge: true },
         )
         transaction.set(
@@ -352,6 +357,7 @@ export const joinOrReenterParticipant = onCall(
         accent: '#3157C8',
         joinedAt: now,
         lastSeenAt: now,
+        status: 'online',
         membershipStatus: 'active',
         submissionStatus: 'draft',
       })
@@ -360,6 +366,8 @@ export const joinOrReenterParticipant = onCall(
         nickname,
         accent: '#3157C8',
         joinedAt: now,
+        lastSeenAt: now,
+        status: 'online',
       })
       transaction.create(userMembershipRef, {
         eventId,

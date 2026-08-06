@@ -39,9 +39,11 @@ const LOCAL_FIREBASE_CONFIG: FirebaseOptions = Object.freeze({
   messagingSenderId: '123456789',
   projectId: 'demo-vibecoding-local',
 })
-const USE_FIREBASE_EMULATORS = import.meta.env.DEV
-  || import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true'
-  || (typeof window !== 'undefined' && ['127.0.0.1', 'localhost'].includes(window.location.hostname))
+// Local development must exercise the same shared Firebase backend unless an
+// emulator run is explicitly requested. Previously every Vite/localhost page
+// silently connected to ports that are usually not running, so two real
+// browsers could never see each other's participant/session updates.
+const USE_FIREBASE_EMULATORS = import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true'
 
 export interface FirebaseServices {
   app: FirebaseApp

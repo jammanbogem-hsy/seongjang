@@ -267,6 +267,7 @@ export function createSeedState(): PrototypeState {
       organizerName: 'VibeCoding 운영팀',
       eventDate: '2026-08-22',
       capacity: ROOM_CAPACITY,
+      lifecycle: 'live',
     },
     participants: PARTICIPANT_NAMES.map((name, index) => participant(index, name)),
     adminInvites: [

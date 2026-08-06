@@ -112,6 +112,7 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
       const db = context.firestore()
       await Promise.all([
         setDoc(doc(db, `events/${eventId}`), {
+          lifecycle: 'live',
           ownerUid,
           publicSlug,
           title: 'VibeCoding Hackathon',
@@ -120,6 +121,7 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
           activeSlideId: 'stage-discover',
           endsAt: null,
           revision: 1,
+          sessionStatus: 'live',
           timerStatus: 'idle',
         }),
         setDoc(doc(db, `events/${eventId}/slides/stage-discover`), {
@@ -256,6 +258,7 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
         endsAt: null,
         previousSlideId: 'stage-discover',
         revision: 2,
+        sessionStatus: 'live',
         timerStatus: 'idle',
       })
     })
@@ -268,6 +271,21 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
       }, { merge: true })
     })
     await assertFails(setDoc(ownDraft, answerDraft(participantA, 'stage-discover', 2)))
+  })
+
+  it('rejects answer drafts until the organizer starts the session', async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await Promise.all([
+        setDoc(doc(db, `events/${eventId}`), { lifecycle: 'lobby' }, { merge: true }),
+        setDoc(doc(db, `events/${eventId}/live/state`), { sessionStatus: 'lobby' }, { merge: true }),
+      ])
+    })
+    const db = testEnvironment.authenticatedContext(participantA).firestore()
+    await assertFails(setDoc(
+      doc(db, `events/${eventId}/answerDrafts/${participantA}__stage-discover`),
+      answerDraft(participantA),
+    ))
   })
 
   it('allows participant A to create and read only their own project draft', async () => {
