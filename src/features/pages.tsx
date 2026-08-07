@@ -723,21 +723,22 @@ export function ParticipantLivePage() {
     state.answers,
   ])
 
+  if (state.room.lifecycle === 'ended') {
+    return (
+      <ParticipantShell>
+        <main className="page narrow" id="main-content">
+          <Card className="empty-state identity-gate" padding="lg">
+            <span className="gateway-icon"><Icon filled name="task_alt" size="lg" /></span>
+            <h1>세션이 종료되었습니다.</h1>
+            <p>작성 기록은 주최자의 세션 카드에 안전하게 보관됩니다.</p>
+            <Button leadingIcon="home" onClick={() => navigate('/')} variant="tonal">처음 화면</Button>
+          </Card>
+        </main>
+      </ParticipantShell>
+    )
+  }
+
   if (!currentParticipant) {
-    if (state.room.lifecycle === 'ended') {
-      return (
-        <ParticipantShell>
-          <main className="page narrow" id="main-content">
-            <Card className="empty-state identity-gate" padding="lg">
-              <span className="gateway-icon"><Icon filled name="task_alt" size="lg" /></span>
-              <h1>세션이 종료되었습니다.</h1>
-              <p>작성 기록은 주최자의 세션 카드에 안전하게 보관됩니다.</p>
-              <Button leadingIcon="home" onClick={() => navigate('/')} variant="tonal">처음 화면</Button>
-            </Card>
-          </main>
-        </ParticipantShell>
-      )
-    }
     return (
       <ParticipantShell>
         <main className="page narrow" id="main-content">

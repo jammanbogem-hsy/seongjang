@@ -177,6 +177,33 @@ describe('organizer live controls', () => {
     expect(screen.getByRole('heading', { name: seed.slides[0].title })).toBeInTheDocument()
   })
 
+  it('closes the participant interaction screen when the organizer ends the session', () => {
+    const seed = createSeedState()
+    seed.room.lifecycle = 'ended'
+    seed.live.timer = {
+      ...seed.live.timer,
+      remainingSec: 0,
+      status: 'complete',
+      endsAt: null,
+    }
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+    window.sessionStorage.setItem(PARTICIPANT_SESSION_KEY, seed.participants[0].id)
+    window.history.replaceState(null, '', '/events/room-vibe26/live')
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <ParticipantLivePage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    expect(screen.getByRole('heading', { name: '세션이 종료되었습니다.' })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: '나의 개인 답변' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: '라이브 채팅' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /공감/ })).not.toBeInTheDocument()
+  })
+
   it('lets a participant send a live reaction and chat message on the current slide', async () => {
     const seed = createSeedState()
     window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
