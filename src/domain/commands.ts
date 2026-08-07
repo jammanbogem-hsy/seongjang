@@ -17,6 +17,7 @@ import type {
 } from './models'
 import { createPublishedSnapshot } from './publicProjection'
 import { createEmptyState, normalizeNickname } from './eventTemplate'
+import { slideInputFieldsValid } from './slideFields'
 
 export interface CommandEnvironment {
   now: () => number
@@ -269,6 +270,10 @@ export function executePlatformCommand(
       if (!Number.isInteger(input.durationSec) || input.durationSec < 60 || input.durationSec > 10_800) {
         return error(state, 'INVALID_CONTENT', '타이머는 1분에서 180분 사이로 설정해주세요.')
       }
+      const inputFields = input.inputFields ?? []
+      if (!slideInputFieldsValid(inputFields)) {
+        return error(state, 'INVALID_CONTENT', '입력 블록의 이름, 위치와 크기를 확인해주세요.')
+      }
       const illustration = input.illustration.startsWith('/assets/illustrations/')
         ? input.illustration
         : '/assets/illustrations/cat-ideation.webp'
@@ -281,6 +286,7 @@ export function executePlatformCommand(
         helper,
         durationSec: input.durationSec,
         illustration,
+        inputFields,
       }
       return success(
         state,
@@ -601,7 +607,11 @@ export function executePlatformCommand(
       if (!prompt || prompt.length > 800 || helper.length > 500) {
         return error(state, 'INVALID_CONTENT', '질문은 800자, 도움말은 500자 이하로 입력해주세요.')
       }
-      const updated = { ...slide, eyebrow, title, prompt, helper }
+      const inputFields = input.inputFields ?? slide.inputFields ?? []
+      if (!slideInputFieldsValid(inputFields)) {
+        return error(state, 'INVALID_CONTENT', '입력 블록의 이름, 위치와 크기를 확인해주세요.')
+      }
+      const updated = { ...slide, eyebrow, title, prompt, helper, inputFields }
       return success(
         state,
         {

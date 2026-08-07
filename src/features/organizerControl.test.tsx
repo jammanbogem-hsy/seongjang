@@ -271,4 +271,102 @@ describe('organizer live controls', () => {
     await act(async () => { await Promise.resolve() })
     expect(screen.queryByText('지금 단계의 예시를 보고 싶어요.')).not.toBeInTheDocument()
   })
+
+  it('builds text and number fields in the organizer slide sandbox', async () => {
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <OrganizerControlPage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '샌드박스' }))
+    expect(screen.getByRole('dialog', { name: '슬라이드 샌드박스' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '텍스트 입력' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '입력 이름' }), {
+      target: { value: '팀 이름' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '숫자 입력' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '입력 이름' }), {
+      target: { value: '예상 사용자 수' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '편집 완료' }))
+    await act(async () => { await Promise.resolve() })
+
+    const persisted = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    expect(persisted.slides[0].inputFields).toEqual([
+      expect.objectContaining({ label: '팀 이름', type: 'text' }),
+      expect.objectContaining({ label: '예상 사용자 수', type: 'number' }),
+    ])
+    expect(screen.getByText('팀 이름 *')).toBeInTheDocument()
+    expect(screen.getByText('예상 사용자 수 *')).toBeInTheDocument()
+  })
+
+  it('collects sandbox field values as one compatible answer', async () => {
+    const seed = createSeedState()
+    const slide = seed.slides[seed.live.activeSlideIndex]
+    slide.inputFields = [
+      { id: 'field-summary', type: 'text', label: '핵심 문장', placeholder: '한 줄로 입력', required: true, x: 6, y: 44, width: 54, height: 14 },
+      { id: 'field-score', type: 'number', label: '예상 시간', placeholder: '분 단위', required: true, x: 64, y: 44, width: 30, height: 14 },
+    ]
+    seed.answers = []
+    seed.live.answersRevealedBySlide[slide.id] = false
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+    window.sessionStorage.setItem(PARTICIPANT_SESSION_KEY, seed.participants[0].id)
+    window.history.replaceState(null, '', '/events/room-vibe26/live')
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <ParticipantLivePage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    fireEvent.change(screen.getByRole('textbox', { name: '핵심 문장' }), {
+      target: { value: '참여자가 바로 이해하는 입력 경험' },
+    })
+    fireEvent.change(screen.getByRole('spinbutton', { name: '예상 시간' }), {
+      target: { value: '15' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '임시 저장' }))
+    await act(async () => { await Promise.resolve() })
+
+    const persisted = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    expect(persisted.answers[0].content).toBe('핵심 문장: 참여자가 바로 이해하는 입력 경험\n예상 시간: 15')
+  })
+
+  it('opens submitted sandbox responses in a drawer and detail modal', () => {
+    const seed = createSeedState()
+    const slide = seed.slides[seed.live.activeSlideIndex]
+    slide.inputFields = [
+      { id: 'field-name', type: 'text', label: '서비스 이름', placeholder: '', required: true, x: 6, y: 44, width: 54, height: 14 },
+      { id: 'field-score', type: 'number', label: '기대 점수', placeholder: '', required: true, x: 64, y: 44, width: 30, height: 14 },
+    ]
+    seed.answers = [{
+      id: 'answer-sandbox',
+      participantId: seed.participants[0].id,
+      slideId: slide.id,
+      content: '서비스 이름: 캣보드\n기대 점수: 9',
+      status: 'submitted',
+      createdAt: '2026-08-07T01:00:00.000Z',
+      updatedAt: '2026-08-07T01:00:00.000Z',
+      submittedAt: '2026-08-07T01:00:00.000Z',
+    }]
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <OrganizerControlPage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '응답 1' }))
+    expect(screen.getByRole('complementary', { name: '현재 슬라이드 응답' })).toHaveTextContent('캣보드')
+    fireEvent.click(screen.getByRole('button', { name: '상세 보기' }))
+    expect(screen.getByRole('dialog', { name: `${seed.participants[0].nickname}님의 응답` })).toHaveTextContent('기대 점수9')
+  })
 })

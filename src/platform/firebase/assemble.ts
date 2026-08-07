@@ -13,6 +13,7 @@ import {
   type ReviewThread,
   type Room,
   type Slide,
+  type SlideInputField,
   type Submission,
   type Synthesis,
   type Theme,
@@ -133,6 +134,24 @@ function parseRoom(event: FirebaseDocumentRecord | null, snapshot: PublishedSnap
 function parseSlides(records: FirebaseDocumentRecord[]): Slide[] {
   return records.map((record) => {
     const data = documentData(record)
+    const inputFields: SlideInputField[] = Array.isArray(data.inputFields)
+      ? data.inputFields.flatMap((value): SlideInputField[] => {
+          const field = object(value)
+          const type = field.type === 'number' ? 'number' : field.type === 'text' ? 'text' : null
+          if (!type || !text(field.id) || !text(field.label)) return []
+          return [{
+            id: text(field.id),
+            type,
+            label: text(field.label),
+            placeholder: text(field.placeholder),
+            required: boolean(field.required),
+            x: number(field.x),
+            y: number(field.y),
+            width: number(field.width),
+            height: number(field.height),
+          }]
+        })
+      : []
     return {
       id: record.id,
       durationSec: number(data.durationSec),
@@ -142,6 +161,7 @@ function parseSlides(records: FirebaseDocumentRecord[]): Slide[] {
       order: number(data.order),
       prompt: text(data.prompt),
       title: text(data.title),
+      inputFields,
     }
   }).sort((left, right) => left.order - right.order)
 }

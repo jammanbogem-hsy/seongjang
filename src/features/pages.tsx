@@ -9,6 +9,12 @@ import {
 import { Link, useLocation, useNavigate, useParams } from '../app/router'
 import { usePlatform } from '../app/PlatformProvider'
 import { createEmbedSnippet, createTextExport, type ExportFormat } from '../domain/exports'
+import {
+  formatSlideFieldAnswer,
+  parseSlideFieldAnswer,
+  slideFieldAnswerComplete,
+  slideInputFieldsValid,
+} from '../domain/slideFields'
 import type {
   Answer,
   CreateSlideInput,
@@ -53,6 +59,7 @@ import {
   Textarea,
 } from '../ui'
 import { ReviewThreadsPanel } from './ReviewThreads'
+import { SlideSandboxEditor } from './SlideSandboxEditor'
 import {
   PUBLIC_SLUG,
   OrganizerShell,
@@ -604,6 +611,11 @@ export function ParticipantLivePage() {
       )
     : undefined
   const answerText = answerDrafts[currentSlide.id] ?? ownAnswer?.content ?? ''
+  const slideInputFields = currentSlide.inputFields ?? []
+  const slideFieldValues = parseSlideFieldAnswer(slideInputFields, answerText)
+  const answerReady = slideInputFields.length
+    ? slideFieldAnswerComplete(slideInputFields, slideFieldValues)
+    : Boolean(answerText.trim())
   const answerDraftConflict = currentSlide.id in answerDrafts
     && answerDrafts[currentSlide.id] !== (ownAnswer?.content ?? '')
     && answerDraftRevisionBases[currentSlide.id] !== (ownAnswer?.draftRevision ?? 0)
@@ -780,6 +792,25 @@ export function ParticipantLivePage() {
         {renderToasts()}
       </ParticipantShell>
     )
+  }
+
+  function updateAnswerDraft(content: string) {
+    if (!(currentSlide.id in answerDrafts)) {
+      setAnswerDraftBases((current) => ({
+        ...current,
+        [currentSlide.id]: ownAnswer?.updatedAt ?? '',
+      }))
+      setAnswerDraftRevisionBases((current) => ({
+        ...current,
+        [currentSlide.id]: ownAnswer?.draftRevision ?? 0,
+      }))
+    }
+    setAnswerDrafts((current) => ({ ...current, [currentSlide.id]: content }))
+  }
+
+  function updateSlideFieldValue(fieldId: string, value: string) {
+    const nextValues = { ...slideFieldValues, [fieldId]: value.replace(/[\r\n]+/gu, ' ').slice(0, 100) }
+    updateAnswerDraft(formatSlideFieldAnswer(slideInputFields, nextValues))
   }
 
   async function saveAnswer(submit = true) {
@@ -965,32 +996,44 @@ export function ParticipantLivePage() {
             <p className="stage-prompt">{currentSlide.prompt}</p>
             {!revealed ? (
               <div className="stack">
-                <Textarea
-                  disabled={timerView.status === 'complete'}
-                  helpText={<AutosaveStatus phase={answerAutosave.phase} savedAt={answerAutosave.savedAt} />}
-                  label="나의 개인 답변"
-                  maxLength={1200}
-                  onChange={(event) => {
-                    if (!(currentSlide.id in answerDrafts)) {
-                      setAnswerDraftBases((current) => ({
-                        ...current,
-                        [currentSlide.id]: ownAnswer?.updatedAt ?? '',
-                      }))
-                      setAnswerDraftRevisionBases((current) => ({
-                        ...current,
-                        [currentSlide.id]: ownAnswer?.draftRevision ?? 0,
-                      }))
-                    }
-                    setAnswerDrafts((current) => ({
-                      ...current,
-                      [currentSlide.id]: event.target.value,
-                    }))
-                  }}
-                  placeholder="관찰한 장면과 맥락을 구체적으로 적어보세요."
-                  rows={7}
-                  showCount
-                  value={answerText}
-                />
+                {slideInputFields.length ? (
+                  <div className="participant-slide-form-canvas">
+                    {slideInputFields.map((field) => (
+                      <div
+                        className="participant-slide-field"
+                        key={field.id}
+                        style={{ left: `${field.x}%`, top: `${field.y}%`, width: `${field.width}%`, height: `${field.height}%` }}
+                      >
+                        <Field
+                          disabled={timerView.status === 'complete'}
+                          inputMode={field.type === 'number' ? 'decimal' : 'text'}
+                          label={field.label}
+                          maxLength={field.type === 'text' ? 100 : undefined}
+                          onChange={(event) => updateSlideFieldValue(field.id, event.target.value)}
+                          placeholder={field.placeholder}
+                          required={field.required}
+                          type={field.type}
+                          value={slideFieldValues[field.id] ?? ''}
+                        />
+                      </div>
+                    ))}
+                    <div className="participant-slide-form-status">
+                      <AutosaveStatus phase={answerAutosave.phase} savedAt={answerAutosave.savedAt} />
+                    </div>
+                  </div>
+                ) : (
+                  <Textarea
+                    disabled={timerView.status === 'complete'}
+                    helpText={<AutosaveStatus phase={answerAutosave.phase} savedAt={answerAutosave.savedAt} />}
+                    label="나의 개인 답변"
+                    maxLength={1200}
+                    onChange={(event) => updateAnswerDraft(event.target.value)}
+                    placeholder="관찰한 장면과 맥락을 구체적으로 적어보세요."
+                    rows={7}
+                    showCount
+                    value={answerText}
+                  />
+                )}
                 {answerDraftConflict ? (
                   <OutcomeNote tone="warm">
                     이 기기의 초안보다 Firebase에 더 최신 답변이 있어 자동저장을 멈췄습니다.
@@ -1022,8 +1065,8 @@ export function ParticipantLivePage() {
                     {ownAnswer?.status === 'submitted' ? <Chip icon="check_circle" tone="success">제출됨</Chip> : null}
                   </span>
                   <MascotAction compactOnly label="입력 내용은 자동 저장하고 있어요" variant="autosave">
-                    <Button disabled={answerDraftConflict || !answerText.trim() || timerView.status === 'complete'} onClick={() => { void saveAnswer(false) }} variant="text">임시 저장</Button>
-                    <Button disabled={answerDraftConflict || !answerText.trim() || timerView.status === 'complete'} leadingIcon="send" onClick={() => { void saveAnswer(true) }}>개인 답변 제출</Button>
+                    <Button disabled={answerDraftConflict || !answerReady || timerView.status === 'complete'} onClick={() => { void saveAnswer(false) }} variant="text">임시 저장</Button>
+                    <Button disabled={answerDraftConflict || !answerReady || timerView.status === 'complete'} leadingIcon="send" onClick={() => { void saveAnswer(true) }}>개인 답변 제출</Button>
                   </MascotAction>
                 </div>
               </div>
@@ -1386,6 +1429,8 @@ export function OrganizerControlPage() {
     : state.room.code
   const participantJoinUrl = `${window.location.origin}/join/${encodeURIComponent(participantRoomCode)}`
   const [reviewAnswerId, setReviewAnswerId] = useState<string | null>(null)
+  const [responsePanelOpen, setResponsePanelOpen] = useState(false)
+  const [responseDetailAnswerId, setResponseDetailAnswerId] = useState<string | null>(null)
   const [createSlideOpen, setCreateSlideOpen] = useState(false)
   const [creatingSlide, setCreatingSlide] = useState(false)
   const [deleteSlideTarget, setDeleteSlideTarget] = useState<Slide | null>(null)
@@ -1403,17 +1448,20 @@ export function OrganizerControlPage() {
     helper: '',
     durationSec: 600,
     illustration: '/assets/illustrations/cat-ideation.webp',
+    inputFields: [],
   })
   const [durationMinutes, setDurationMinutes] = useState(() => String(Math.round(currentSlide.durationSec / 60)))
   const knownParticipantIdsRef = useRef<Set<string> | null>(null)
   const knownLiveChatIdsRef = useRef<Set<string> | null>(null)
   const [slideEditorOpen, setSlideEditorOpen] = useState(false)
+  const [slideSandboxOpen, setSlideSandboxOpen] = useState(false)
   const [slideDraft, setSlideDraft] = useState<UpdateSlideInput>(() => ({
     slideId: currentSlide.id,
     eyebrow: currentSlide.eyebrow,
     title: currentSlide.title,
     prompt: currentSlide.prompt,
     helper: currentSlide.helper,
+    inputFields: currentSlide.inputFields ?? [],
   }))
   const revealed = Boolean(state.live.answersRevealedBySlide[currentSlide.id])
   const commentsEnabled = Boolean(state.live.commentsEnabledBySlide[currentSlide.id])
@@ -1433,6 +1481,8 @@ export function OrganizerControlPage() {
   ])) as Record<LiveReactionKind, number>
   const submittedCount = state.submissions.filter((submission) => submission.status === 'submitted').length
   const reviewAnswer = stageAnswers.find((answer) => answer.id === reviewAnswerId)
+  const responseDetailAnswer = stageAnswers.find((answer) => answer.id === responseDetailAnswerId)
+  const slideStructureLocked = state.answers.some((answer) => answer.slideId === currentSlide.id)
   const slideDraftValid = Boolean(
     slideDraft.eyebrow.trim()
     && slideDraft.title.trim()
@@ -1441,12 +1491,14 @@ export function OrganizerControlPage() {
     && slideDraft.title.trim().length <= 160
     && slideDraft.prompt.trim().length <= 800
     && slideDraft.helper.trim().length <= 500
+    && slideInputFieldsValid(slideDraft.inputFields ?? [])
   )
   const slideDraftDirty = slideDraft.slideId === currentSlide.id && (
     slideDraft.eyebrow !== currentSlide.eyebrow
     || slideDraft.title !== currentSlide.title
     || slideDraft.prompt !== currentSlide.prompt
     || slideDraft.helper !== currentSlide.helper
+    || JSON.stringify(slideDraft.inputFields ?? []) !== JSON.stringify(currentSlide.inputFields ?? [])
   )
 
   const {
@@ -1455,7 +1507,7 @@ export function OrganizerControlPage() {
     savedAt: slideAutosavedAt,
   } = useAutosave({
     delay: 900,
-    enabled: slideEditorOpen && slideDraftValid && slideDraftDirty,
+    enabled: (slideEditorOpen || slideSandboxOpen) && slideDraftValid && slideDraftDirty,
     fingerprint: JSON.stringify(slideDraft),
     save: async () => {
       const result = await dispatchAsync({ type: 'UPDATE_SLIDE', input: slideDraft })
@@ -1477,8 +1529,12 @@ export function OrganizerControlPage() {
       title: nextSlide.title,
       prompt: nextSlide.prompt,
       helper: nextSlide.helper,
+      inputFields: nextSlide.inputFields ?? [],
     })
     setSlideEditorOpen(false)
+    setSlideSandboxOpen(false)
+    setResponsePanelOpen(false)
+    setResponseDetailAnswerId(null)
   }, [currentSlide.id])
 
   useEffect(() => {
@@ -1531,6 +1587,23 @@ export function OrganizerControlPage() {
     setSlideEditorOpen(false)
   }, [flushSlideAutosave, notify, slideDraftDirty, slideDraftValid])
 
+  const closeSlideSandbox = useCallback(async () => {
+    if (!slideDraftDirty) {
+      setSlideSandboxOpen(false)
+      return
+    }
+    if (!slideDraftValid) {
+      notify('입력 블록의 이름, 위치와 크기를 확인해주세요.', 'danger')
+      return
+    }
+    const saved = await flushSlideAutosave()
+    if (!saved) {
+      notify('샌드박스 저장을 완료하지 못했습니다. 연결 상태를 확인해주세요.', 'danger')
+      return
+    }
+    setSlideSandboxOpen(false)
+  }, [flushSlideAutosave, notify, slideDraftDirty, slideDraftValid])
+
   function run(command: Parameters<typeof dispatchAsync>[0]) {
     void dispatchAsync(command).then((result) => announceResult(result, notify))
   }
@@ -1547,8 +1620,21 @@ export function OrganizerControlPage() {
       title: currentSlide.title,
       prompt: currentSlide.prompt,
       helper: currentSlide.helper,
+      inputFields: currentSlide.inputFields ?? [],
     })
     setSlideEditorOpen(true)
+  }
+
+  function openSlideSandbox() {
+    setSlideDraft({
+      slideId: currentSlide.id,
+      eyebrow: currentSlide.eyebrow,
+      title: currentSlide.title,
+      prompt: currentSlide.prompt,
+      helper: currentSlide.helper,
+      inputFields: currentSlide.inputFields ?? [],
+    })
+    setSlideSandboxOpen(true)
   }
 
   function updateSlideDraft(field: Exclude<keyof UpdateSlideInput, 'slideId'>, value: string) {
@@ -1568,6 +1654,7 @@ export function OrganizerControlPage() {
       helper: '',
       durationSec: minutes * 60,
       illustration: '/assets/illustrations/cat-ideation.webp',
+      inputFields: [],
     })
     setCreateSlideOpen(true)
   }
@@ -1593,6 +1680,7 @@ export function OrganizerControlPage() {
           helper: slide.helper,
           durationSec: slide.durationSec,
           illustration: slide.illustration,
+          inputFields: slide.inputFields ?? [],
         },
       }),
       notify,
@@ -1793,11 +1881,27 @@ export function OrganizerControlPage() {
               <span>{currentSlide.eyebrow}</span>
               <div className="stage-kicker__actions">
                 <Chip tone={revealed ? 'success' : 'info'}>{revealed ? '답변 공개됨' : '개인 작성 중'}</Chip>
+                <Button leadingIcon="view_sidebar" onClick={() => setResponsePanelOpen(true)} size="sm" variant="outlined">응답 {stageAnswerCount}</Button>
+                <Button className="stage-edit-button" leadingIcon="dashboard_customize" onClick={openSlideSandbox} size="sm" variant="tonal">샌드박스</Button>
                 <Button className="stage-edit-button" leadingIcon="edit" onClick={openSlideEditor} size="sm" variant="tonal">슬라이드 편집</Button>
               </div>
             </div>
             <h2>{currentSlide.title}</h2>
             <p>{currentSlide.prompt}</p>
+            {(currentSlide.inputFields ?? []).length ? (
+              <div className="organizer-stage-fields" aria-label="참여자 입력 미리보기">
+                {(currentSlide.inputFields ?? []).map((field) => (
+                  <div
+                    className="organizer-stage-field"
+                    key={field.id}
+                    style={{ left: `${field.x}%`, top: `${field.y}%`, width: `${field.width}%`, height: `${field.height}%` }}
+                  >
+                    <span>{field.label}{field.required ? ' *' : ''}</span>
+                    <div><Icon name={field.type === 'number' ? '123' : 'short_text'} size="sm" />{field.placeholder}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <img alt="" className="stage-cat" src={currentSlide.illustration} />
           </section>
 
@@ -1976,6 +2080,92 @@ export function OrganizerControlPage() {
           />
         ) : null}
       </AdminLayout>
+      {responsePanelOpen ? (
+        <div className="response-drawer-layer">
+          <button aria-label="응답 패널 닫기" className="response-drawer-scrim" onClick={() => setResponsePanelOpen(false)} type="button" />
+          <aside aria-label="현재 슬라이드 응답" className="response-drawer">
+            <header className="response-drawer__header">
+              <div>
+                <span className="eyebrow">LIVE RESPONSES</span>
+                <h2>응답 {stageAnswerCount}</h2>
+                <p>{currentSlide.title}</p>
+              </div>
+              <IconButton icon="close" label="응답 패널 닫기" onClick={() => setResponsePanelOpen(false)} />
+            </header>
+            <div className="response-drawer__list" aria-live="polite">
+              {stageAnswers.map((answer) => {
+                const participant = answerAuthor(answer, state.participants)
+                const values = parseSlideFieldAnswer(currentSlide.inputFields ?? [], answer.content)
+                return (
+                  <article className="response-drawer-card" key={answer.id}>
+                    <header>
+                      <span className="avatar">{participant?.nickname.slice(0, 1) ?? '?'}</span>
+                      <div><strong>{participant?.nickname ?? '참여자'}</strong><span>제출 완료</span></div>
+                    </header>
+                    {(currentSlide.inputFields ?? []).length ? (
+                      <dl>
+                        {(currentSlide.inputFields ?? []).map((field) => (
+                          <div key={field.id}><dt>{field.label}</dt><dd>{values[field.id] || '—'}</dd></div>
+                        ))}
+                      </dl>
+                    ) : <p>{answer.content}</p>}
+                    <Button fullWidth leadingIcon="open_in_full" onClick={() => setResponseDetailAnswerId(answer.id)} size="sm" variant="text">상세 보기</Button>
+                  </article>
+                )
+              })}
+              {!stageAnswers.length ? (
+                <div className="response-drawer__empty">
+                  <Icon name="hourglass_top" size="lg" />
+                  <strong>첫 응답을 기다리고 있어요</strong>
+                  <span>참여자가 제출하면 이 패널에 바로 나타납니다.</span>
+                </div>
+              ) : null}
+            </div>
+          </aside>
+        </div>
+      ) : null}
+      <Dialog
+        actions={<Button onClick={() => setResponseDetailAnswerId(null)}>확인</Button>}
+        description="현재 슬라이드에 제출된 참여자 응답입니다."
+        onClose={() => setResponseDetailAnswerId(null)}
+        open={Boolean(responseDetailAnswer)}
+        size="sm"
+        title={`${responseDetailAnswer ? answerAuthor(responseDetailAnswer, state.participants)?.nickname ?? '참여자' : ''}님의 응답`}
+      >
+        {responseDetailAnswer ? (
+          <div className="response-detail">
+            {(currentSlide.inputFields ?? []).length ? (
+              (currentSlide.inputFields ?? []).map((field) => (
+                <section key={field.id}>
+                  <span><Icon name={field.type === 'number' ? '123' : 'short_text'} size="sm" /> {field.label}</span>
+                  <strong>{parseSlideFieldAnswer(currentSlide.inputFields ?? [], responseDetailAnswer.content)[field.id] || '응답 없음'}</strong>
+                </section>
+              ))
+            ) : <p>{responseDetailAnswer.content}</p>}
+          </div>
+        ) : null}
+      </Dialog>
+      <Dialog
+        actions={(
+          <>
+            <AutosaveStatus phase={slideAutosavePhase} savedAt={slideAutosavedAt} />
+            <Button leadingIcon="done" onClick={() => { void closeSlideSandbox() }}>편집 완료</Button>
+          </>
+        )}
+        className="slide-sandbox-dialog"
+        description="입력 블록을 배치하면 참여자 화면에 즉시 반영됩니다. 블록 변경은 자동 저장됩니다."
+        onClose={() => { void closeSlideSandbox() }}
+        open={slideSandboxOpen}
+        size="lg"
+        title="슬라이드 샌드박스"
+      >
+        <SlideSandboxEditor
+          fields={slideDraft.inputFields ?? []}
+          locked={slideStructureLocked}
+          onChange={(inputFields) => setSlideDraft((current) => ({ ...current, inputFields }))}
+          slide={{ ...currentSlide, ...slideDraft }}
+        />
+      </Dialog>
       <Dialog
         actions={(
           <>

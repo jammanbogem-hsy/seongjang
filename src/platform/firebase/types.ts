@@ -1,4 +1,4 @@
-import type { PrototypeState, SubmissionStatus } from '../../domain/models'
+import type { PrototypeState, SlideInputField, SubmissionStatus } from '../../domain/models'
 import type { FirebaseBackendDriver, FirebaseDocumentRecord } from './driver'
 
 export type FirebaseViewRole = 'organizer' | 'participant' | 'public'
@@ -116,6 +116,7 @@ export type FirebaseAuthoritativeCommand =
       illustration: string
       prompt: string
       title: string
+      inputFields?: SlideInputField[]
     }
   | { type: 'DELETE_SLIDE'; slideId: string }
   | { type: 'MOVE_SLIDE'; direction: 'up' | 'down'; slideId: string }
@@ -133,6 +134,7 @@ export type FirebaseAuthoritativeCommand =
       prompt: string
       slideId: string
       title: string
+      inputFields?: SlideInputField[]
     }
   | { type: 'SUBMIT_ANSWER'; slideId: string }
   | { type: 'ADD_COMMENT'; answerId: string; body: string }

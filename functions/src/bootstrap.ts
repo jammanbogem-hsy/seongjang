@@ -142,6 +142,7 @@ export async function seedVibe26Data({
           helper: slide.helper,
           durationSec: slide.durationSec,
           illustration: slide.illustration,
+          inputFields: slide.inputFields,
           answersRevealed: false,
           commentsEnabled: false,
         })),

@@ -19,6 +19,7 @@ export const EVENT_SLIDES: Slide[] = [
     helper: '누가, 언제, 어디에서 어떤 불편을 겪는지 구체적으로 써보세요.',
     durationSec: 720,
     illustration: '/assets/illustrations/cat-ideation.webp',
+    inputFields: [],
   },
   {
     id: 'stage-focus',
@@ -29,6 +30,7 @@ export const EVENT_SLIDES: Slide[] = [
     helper: '모두를 위한 답보다 첫 번째 사용자의 생생한 맥락에 집중하세요.',
     durationSec: 600,
     illustration: '/assets/illustrations/cat-lobby.webp',
+    inputFields: [],
   },
   {
     id: 'stage-build',
@@ -39,6 +41,7 @@ export const EVENT_SLIDES: Slide[] = [
     helper: '“사용자가 ___하면, 서비스는 ___해서, ___할 수 있다” 형식을 활용해보세요.',
     durationSec: 1_080,
     illustration: '/assets/illustrations/cat-timer.webp',
+    inputFields: [],
   },
   {
     id: 'stage-reflect',
@@ -49,6 +52,7 @@ export const EVENT_SLIDES: Slide[] = [
     helper: '작고 측정 가능하며 내일 시작할 수 있는 행동이면 충분합니다.',
     durationSec: 480,
     illustration: '/assets/illustrations/cat-submission.webp',
+    inputFields: [],
   },
 ]
 

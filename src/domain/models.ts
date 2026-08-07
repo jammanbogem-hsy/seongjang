@@ -56,6 +56,21 @@ export interface Slide {
   helper: string
   durationSec: number
   illustration: string
+  inputFields?: SlideInputField[]
+}
+
+export type SlideInputFieldType = 'text' | 'number'
+
+export interface SlideInputField {
+  id: Identifier
+  type: SlideInputFieldType
+  label: string
+  placeholder: string
+  required: boolean
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export interface LiveTimer {
@@ -396,6 +411,7 @@ export interface UpdateSlideInput {
   title: string
   prompt: string
   helper: string
+  inputFields?: SlideInputField[]
 }
 
 export interface CreateSlideInput {
@@ -405,6 +421,7 @@ export interface CreateSlideInput {
   helper: string
   durationSec: number
   illustration: string
+  inputFields?: SlideInputField[]
 }
 
 export type PlatformCommand =

@@ -68,6 +68,7 @@ const MAX_REVIEW_THREADS_PER_PARTICIPANT = 20
 const MAX_LIVE_CHAT_MESSAGES_PER_PARTICIPANT_PER_SLIDE = 30
 const MIN_LIVE_CHAT_INTERVAL_MS = 1_500
 const MAX_SLIDES = 12
+const MAX_SLIDE_INPUT_FIELDS = 6
 const COMMAND_WINDOW_MS = 60_000
 const ALLOWED_SLIDE_ILLUSTRATIONS = new Set([
   '/assets/illustrations/cat-ideation.webp',
@@ -77,6 +78,41 @@ const ALLOWED_SLIDE_ILLUSTRATIONS = new Set([
 ])
 const LIVE_REACTION_KINDS = new Set(['like', 'love', 'idea', 'question'])
 const commandBuckets = new Map<string, { count: number; window: number }>()
+
+function slideInputFields(input: UnknownRecord): UnknownRecord[] {
+  const raw = input.inputFields
+  if (raw === undefined) return []
+  if (!Array.isArray(raw) || raw.length > MAX_SLIDE_INPUT_FIELDS) {
+    throw new HttpsError('invalid-argument', `입력 블록은 최대 ${MAX_SLIDE_INPUT_FIELDS}개까지 만들 수 있습니다.`)
+  }
+  const labels = new Set<string>()
+  return raw.map((candidate, index) => {
+    const field = asRecord(candidate, `${index + 1}번째 입력 블록`)
+    const id = requiredString(field, 'id', { max: 80, label: '입력 블록 ID' })
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+      throw new HttpsError('invalid-argument', '입력 블록 ID 형식을 확인해주세요.')
+    }
+    const type = requiredString(field, 'type', { max: 12, label: '입력 유형' })
+    if (type !== 'text' && type !== 'number') {
+      throw new HttpsError('invalid-argument', '지원하지 않는 입력 유형입니다.')
+    }
+    const label = requiredString(field, 'label', { max: 80, label: '입력 이름' })
+    const normalizedLabel = label.toLocaleLowerCase('ko-KR')
+    if (labels.has(normalizedLabel)) {
+      throw new HttpsError('invalid-argument', '입력 블록 이름은 서로 달라야 합니다.')
+    }
+    labels.add(normalizedLabel)
+    const placeholder = optionalString(field, 'placeholder', 100)
+    const x = requiredInteger(field, 'x', 0, 76)
+    const y = requiredInteger(field, 'y', 30, 88)
+    const width = requiredInteger(field, 'width', 24, 100)
+    const height = requiredInteger(field, 'height', 12, 70)
+    if (x + width > 100 || y + height > 100) {
+      throw new HttpsError('invalid-argument', '입력 블록이 슬라이드 영역을 벗어났습니다.')
+    }
+    return { id, type, label, placeholder, required: field.required === true, x, y, width, height }
+  })
+}
 
 function consumeInstanceCommandBudget(eventId: string, actor: EventActor): void {
   const window = Math.floor(Date.now() / COMMAND_WINDOW_MS)
@@ -408,12 +444,13 @@ async function updateSlideContent(
 ): Promise<CommandSuccess> {
   const input = commandInput(command, '슬라이드')
   const slideId = safeDocumentId(requiredString(input, 'slideId', { max: 128 }), '슬라이드 ID')
-  const patch = {
+  const contentPatch = {
     eyebrow: requiredString(input, 'eyebrow', { max: 80, label: '단계 이름' }),
     title: requiredString(input, 'title', { max: 160, label: '슬라이드 제목' }),
     prompt: requiredString(input, 'prompt', { max: 800, label: '참여자 질문' }),
     helper: optionalString(input, 'helper', 500),
   }
+  const nextInputFields = input.inputFields === undefined ? null : slideInputFields(input)
   const { publicRootPath } = await eventAndPublicRoot(eventId)
   const slideRef = db.doc(eventPath(eventId, `slides/${slideId}`))
   const publicRootRef = db.doc(publicRootPath)
@@ -424,6 +461,10 @@ async function updateSlideContent(
     ])
     if (!slide.exists || !publicRoot.exists) {
       throw new HttpsError('not-found', '편집할 슬라이드 정보를 찾을 수 없습니다.')
+    }
+    const patch: UnknownRecord = {
+      ...contentPatch,
+      inputFields: nextInputFields ?? (Array.isArray(slide.get('inputFields')) ? slide.get('inputFields') : []),
     }
     const join = publicRoot.get('join') as { slides?: Array<Record<string, unknown>> } | undefined
     const slides = Array.isArray(join?.slides)
@@ -456,6 +497,7 @@ async function createSlide(
     title: requiredString(input, 'title', { max: 160, label: '슬라이드 제목' }),
     prompt: requiredString(input, 'prompt', { max: 800, label: '참여자 질문' }),
     helper: optionalString(input, 'helper', 500),
+    inputFields: slideInputFields(input),
   }
   const { publicRootPath } = await eventAndPublicRoot(eventId)
   const slidesCollection = db.collection(eventPath(eventId, 'slides'))
