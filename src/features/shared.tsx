@@ -8,6 +8,26 @@ import { usePlatform } from '../app/PlatformProvider'
 export const EVENT_ID = 'room-vibe26'
 export const PUBLIC_SLUG = 'vibecoding-2026'
 
+export function eventIdFromWorkspacePath(pathname: string): string | null {
+  return pathname.match(/^\/(?:admin\/)?events\/([^/]+)/)?.[1] ?? null
+}
+
+export function roomCodeFromSessionId(eventId: string): string | null {
+  if (!eventId.startsWith('session-')) return null
+  const code = eventId.slice('session-'.length).trim()
+  return code ? code.toLocaleUpperCase() : null
+}
+
+function joinCodeFromPath(pathname: string): string | null {
+  const code = pathname.match(/^\/join\/([^/]+)/)?.[1]?.trim()
+  if (!code) return null
+  try {
+    return decodeURIComponent(code).toLocaleUpperCase()
+  } catch {
+    return null
+  }
+}
+
 function organizerNav(eventId: string): AppNavItem[] {
   return [
     { label: '세션', to: '/admin/sessions', icon: 'view_carousel' },
@@ -84,7 +104,12 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
     signOut,
     state,
   } = usePlatform()
-  const eventId = state.room.id || EVENT_ID
+  const { pathname } = useLocation()
+  const routeEventId = eventIdFromWorkspacePath(pathname)
+  const eventId = routeEventId || state.room.id || EVENT_ID
+  const roomCode = state.room.id === eventId
+    ? state.room.code
+    : roomCodeFromSessionId(eventId) ?? undefined
   const [signingIn, setSigningIn] = useState(false)
   const [authError, setAuthError] = useState('')
 
@@ -115,7 +140,7 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
 
   if (authRole !== 'owner' && authRole !== 'admin') {
     return (
-      <AppShell brandTo="/" mode="organizer" roomCode={state.room.code}>
+      <AppShell brandTo="/" mode="organizer" roomCode={roomCode}>
         <main className="page narrow" id="main-content">
           <Card className="empty-state identity-gate" padding="lg">
             <CatIllustration decorative size="lg" variant="review" />
@@ -152,7 +177,7 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
       brandTo="/admin/sessions"
       mode="organizer"
       navItems={organizerNav(eventId)}
-      roomCode={state.room.code}
+      roomCode={roomCode}
     >
       {children}
     </AppShell>
@@ -161,16 +186,24 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
 
 export function ParticipantShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const { currentParticipant, signOut, state } = usePlatform()
-  const eventId = state.room.id || EVENT_ID
-  const publicSlug = state.room.publicSlug || (eventId.startsWith('session-') ? eventId.slice(8) : PUBLIC_SLUG)
+  const routeEventId = eventIdFromWorkspacePath(pathname)
+  const eventId = routeEventId || state.room.id || EVENT_ID
+  const stateMatchesRoute = state.room.id === eventId
+  const roomCode = stateMatchesRoute
+    ? state.room.code
+    : roomCodeFromSessionId(eventId) ?? undefined
+  const publicSlug = stateMatchesRoute
+    ? state.room.publicSlug || (eventId.startsWith('session-') ? eventId.slice(8) : PUBLIC_SLUG)
+    : eventId.startsWith('session-') ? eventId.slice(8) : PUBLIC_SLUG
   return (
     <AppShell
       actions={currentParticipant ? (
         <Button
           leadingIcon="person_add"
           onClick={() => {
-            void signOut().then(() => navigate(`/join/${state.room.code}`))
+            void signOut().then(() => navigate(roomCode ? `/join/${roomCode}` : '/'))
           }}
           size="sm"
           variant="text"
@@ -181,7 +214,7 @@ export function ParticipantShell({ children }: { children: ReactNode }) {
       brandTo={`/events/${eventId}/live`}
       mode="participant"
       navItems={participantNav(eventId, publicSlug)}
-      roomCode={state.room.code}
+      roomCode={roomCode}
     >
       <div className="session-strip" role="status">
         <span className="session-strip__signal"><Icon filled name="sensors" size="sm" /></span>
@@ -208,17 +241,24 @@ export function PublicShell({
   const { state } = usePlatform()
   const pathSlug = pathname.match(/^\/(?:dashboards|exhibitions)\/([^/]+)/)?.[1]
   const publicSlug = pathSlug || state.room.publicSlug || PUBLIC_SLUG
+  const joinCode = joinCodeFromPath(pathname)
+  const stateMatchesPublicRoute = Boolean(pathSlug && (
+    state.room.publicSlug === pathSlug
+    || state.room.code.toLocaleLowerCase() === pathSlug.toLocaleLowerCase()
+    || (pathSlug === PUBLIC_SLUG && state.room.id === EVENT_ID)
+  ))
+  const roomCode = joinCode || (stateMatchesPublicRoute ? state.room.code : undefined)
   return (
     <AppShell
       actions={!minimal ? (
-        <Button className="keep-mobile" leadingIcon="login" onClick={() => navigate(`/join/${state.room.code}`)} variant="outlined">
+        <Button className="keep-mobile" leadingIcon="login" onClick={() => navigate(roomCode ? `/join/${roomCode}` : '/')} variant="outlined">
           방 입장
         </Button>
       ) : undefined}
       className={minimal ? 'app-shell--gateway' : undefined}
       mode="public"
       navItems={minimal ? [] : publicNav(publicSlug)}
-      roomCode={minimal ? undefined : state.room.code}
+      roomCode={minimal ? undefined : roomCode}
     >
       {children}
       {!minimal && !hideFooter ? <footer className="site-footer">

@@ -135,6 +135,24 @@ describe('organizer live controls', () => {
     expect(persisted.live.activeSlideIndex).toBe(0)
   })
 
+  it('shows the dynamic session code and participant entry link from the route', () => {
+    window.history.replaceState(null, '', '/admin/events/session-ab12cd/control')
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <OrganizerControlPage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    expect(screen.getAllByText('AB12CD')).toHaveLength(2)
+    expect(screen.getByRole('link', { name: 'http://localhost:3000/join/AB12CD' })).toHaveAttribute(
+      'href',
+      'http://localhost:3000/join/AB12CD',
+    )
+  })
+
   it('opens the first slide when a waiting participant receives the start signal', async () => {
     const seed = createSeedState()
     seed.room.lifecycle = 'lobby'

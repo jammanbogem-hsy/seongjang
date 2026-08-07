@@ -59,8 +59,10 @@ import {
   ParticipantShell,
   PublicShell,
   announceResult,
+  eventIdFromWorkspacePath,
   formatDate,
   formatTimer,
+  roomCodeFromSessionId,
   useNotices,
 } from './shared'
 
@@ -1373,9 +1375,15 @@ export function SubmissionPage() {
 export function OrganizerControlPage() {
   const { currentSlide, dispatchAsync, state, timerView } = usePlatform()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const routeEventId = eventIdFromWorkspacePath(pathname)
   const currentSlideRef = useRef(currentSlide)
   currentSlideRef.current = currentSlide
   const { notify, renderToasts } = useNotices()
+  const participantRoomCode = routeEventId && routeEventId !== state.room.id
+    ? roomCodeFromSessionId(routeEventId) ?? state.room.code
+    : state.room.code
+  const participantJoinUrl = `${window.location.origin}/join/${encodeURIComponent(participantRoomCode)}`
   const [reviewAnswerId, setReviewAnswerId] = useState<string | null>(null)
   const [createSlideOpen, setCreateSlideOpen] = useState(false)
   const [creatingSlide, setCreatingSlide] = useState(false)
@@ -1636,6 +1644,16 @@ export function OrganizerControlPage() {
     }
   }
 
+  async function copyParticipantEntry() {
+    const entryText = `${state.room.title}\n방 코드: ${participantRoomCode}\n${participantJoinUrl}`
+    try {
+      await navigator.clipboard.writeText(entryText)
+      notify('방 코드와 참여자 입장 링크를 복사했습니다.')
+    } catch {
+      notify('입장 정보를 복사하지 못했습니다. 주소를 직접 선택해 복사해주세요.', 'danger')
+    }
+  }
+
   async function applyTimerDuration(minutes = Number(durationMinutes)) {
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
       notify('타이머는 1분에서 180분 사이의 정수로 입력해주세요.', 'danger')
@@ -1666,6 +1684,29 @@ export function OrganizerControlPage() {
         eyebrow={`LIVE CONTROL · REVISION ${state.revision}`}
         title="지금 모두가 보고 있는 장면"
       >
+        <Card className="session-entry-panel" padding="md" tone="subtle">
+          <div className="session-entry-panel__code">
+            <span><Icon name="meeting_room" size="sm" /> 참여자 입장 코드</span>
+            <strong>{participantRoomCode}</strong>
+          </div>
+          <div className="session-entry-panel__link">
+            <span>입장 주소</span>
+            <a href={participantJoinUrl} rel="noreferrer" target="_blank">{participantJoinUrl}</a>
+          </div>
+          <div className="session-entry-panel__actions">
+            <Chip icon={state.room.lifecycle === 'ended' ? 'lock' : 'how_to_reg'} tone={state.room.lifecycle === 'ended' ? 'neutral' : 'success'}>
+              {state.room.lifecycle === 'ended' ? '입장 종료' : `입장 가능 · ${state.participants.length}/${state.room.capacity}`}
+            </Chip>
+            <Button leadingIcon="content_copy" onClick={() => { void copyParticipantEntry() }} size="sm" variant="tonal">입장 정보 복사</Button>
+            <Button
+              disabled={state.room.lifecycle === 'ended'}
+              leadingIcon="open_in_new"
+              onClick={() => window.open(participantJoinUrl, '_blank', 'noopener,noreferrer')}
+              size="sm"
+              variant="outlined"
+            >입장 화면</Button>
+          </div>
+        </Card>
         {state.room.lifecycle === 'lobby' ? (
           <section aria-labelledby="session-start-title" className="session-start-panel">
             <div className="session-start-panel__copy">
@@ -1689,7 +1730,7 @@ export function OrganizerControlPage() {
                 onClick={() => { void startSession() }}
                 size="lg"
               >세션 시작</Button>
-              <span>첫 슬라이드와 타이머가 모든 참여자에게 열립니다.</span>
+              <span>첫 슬라이드와 타이머가 열립니다. 진행 중에도 위 방 코드로 입장할 수 있습니다.</span>
             </div>
           </section>
         ) : null}
