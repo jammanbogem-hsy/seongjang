@@ -350,7 +350,7 @@ describe('organizer live controls', () => {
     expect(persisted.slides[seed.live.activeSlideIndex].inputFields[0].label).toBe('새 질문')
     expect(persisted.answers[0].content).toBe('기존 질문: 먼저 제출한 답변')
 
-    fireEvent.click(screen.getByRole('button', { name: '응답 1' }))
+    fireEvent.click(screen.getByRole('button', { name: '응답 1개 보기' }))
     const responseDrawer = screen.getByRole('complementary', { name: '현재 슬라이드 응답' })
     expect(responseDrawer).toHaveTextContent('기존 질문')
     expect(responseDrawer).toHaveTextContent('먼저 제출한 답변')
@@ -384,6 +384,13 @@ describe('organizer live controls', () => {
     fireEvent.change(screen.getByRole('spinbutton', { name: '예상 시간' }), {
       target: { value: '15' },
     })
+    const summaryWrapper = screen.getByRole('textbox', { name: '핵심 문장' }).closest('.participant-slide-field') as HTMLElement
+    const scoreWrapper = screen.getByRole('spinbutton', { name: '예상 시간' }).closest('.participant-slide-field') as HTMLElement
+    expect(summaryWrapper.style.left).toBe('')
+    expect(summaryWrapper.style.top).toBe('')
+    expect(summaryWrapper).toHaveClass('participant-slide-field--wide')
+    expect(scoreWrapper.style.left).toBe('')
+    expect(scoreWrapper.style.top).toBe('')
     fireEvent.click(screen.getByRole('button', { name: '임시 저장' }))
     await act(async () => { await Promise.resolve() })
 
@@ -418,9 +425,51 @@ describe('organizer live controls', () => {
       </RouterProvider>,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '응답 1' }))
+    fireEvent.click(screen.getByRole('button', { name: '응답 1개 보기' }))
     expect(screen.getByRole('complementary', { name: '현재 슬라이드 응답' })).toHaveTextContent('캣보드')
     fireEvent.click(screen.getByRole('button', { name: '상세 보기' }))
     expect(screen.getByRole('dialog', { name: `${seed.participants[0].nickname}님의 응답` })).toHaveTextContent('기대 점수9')
+  })
+
+  it('reveals collected responses through one clear confirmation flow', async () => {
+    const seed = createSeedState()
+    const slide = seed.slides[seed.live.activeSlideIndex]
+    seed.answers = [{
+      id: 'answer-to-reveal',
+      participantId: seed.participants[0].id,
+      slideId: slide.id,
+      content: '핵심 문장: 함께 보고 싶은 응답',
+      status: 'submitted',
+      createdAt: '2026-08-07T01:00:00.000Z',
+      updatedAt: '2026-08-07T01:00:00.000Z',
+      submittedAt: '2026-08-07T01:00:00.000Z',
+    }]
+    seed.live.answersRevealedBySlide[slide.id] = false
+    seed.live.commentsEnabledBySlide[slide.id] = false
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <OrganizerControlPage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '응답 1개 공개하기' }))
+    const dialog = screen.getByRole('dialog', { name: '참여자 응답을 공개할까요?' })
+    expect(dialog).toHaveTextContent('함께 보고 싶은 응답')
+    expect(screen.getByRole('switch', { name: '공개와 함께 댓글 열기' })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(screen.getByRole('button', { name: '응답 1개 공개' }))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByRole('dialog', { name: '참여자 응답을 공개할까요?' })).not.toBeInTheDocument()
+    expect(screen.getByText('참여자에게 공개 중')).toBeInTheDocument()
+    const persisted = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    expect(persisted.live.answersRevealedBySlide[slide.id]).toBe(true)
+    expect(persisted.live.commentsEnabledBySlide[slide.id]).toBe(true)
   })
 })

@@ -1053,9 +1053,8 @@ export function ParticipantLivePage() {
                   <div className="participant-slide-form-canvas">
                     {slideInputFields.map((field) => (
                       <div
-                        className="participant-slide-field"
+                        className={`participant-slide-field${field.width >= 50 ? ' participant-slide-field--wide' : ''}`}
                         key={field.id}
-                        style={{ left: `${field.x}%`, top: `${field.y}%`, width: `${field.width}%`, height: `${field.height}%` }}
                       >
                         <Field
                           disabled={timerView.status === 'complete'}
@@ -1484,6 +1483,9 @@ export function OrganizerControlPage() {
   const [reviewAnswerId, setReviewAnswerId] = useState<string | null>(null)
   const [responsePanelOpen, setResponsePanelOpen] = useState(false)
   const [responseDetailAnswerId, setResponseDetailAnswerId] = useState<string | null>(null)
+  const [revealDialogOpen, setRevealDialogOpen] = useState(false)
+  const [revealWithComments, setRevealWithComments] = useState(true)
+  const [revealingAnswers, setRevealingAnswers] = useState(false)
   const [createSlideOpen, setCreateSlideOpen] = useState(false)
   const [creatingSlide, setCreatingSlide] = useState(false)
   const [deleteSlideTarget, setDeleteSlideTarget] = useState<Slide | null>(null)
@@ -1588,6 +1590,7 @@ export function OrganizerControlPage() {
     setSlideSandboxOpen(false)
     setResponsePanelOpen(false)
     setResponseDetailAnswerId(null)
+    setRevealDialogOpen(false)
   }, [currentSlide.id])
 
   useEffect(() => {
@@ -1808,6 +1811,37 @@ export function OrganizerControlPage() {
     )
   }
 
+  async function revealAnswersForDiscussion() {
+    if (!stageAnswerCount || revealingAnswers) return
+    setRevealingAnswers(true)
+    try {
+      const revealResult = await dispatchAsync({
+        type: 'SET_ANSWERS_REVEALED',
+        slideId: currentSlide.id,
+        revealed: true,
+      })
+      if (!revealResult.ok) {
+        notify(revealResult.error.message, 'danger')
+        return
+      }
+      if (revealWithComments) {
+        const commentsResult = await dispatchAsync({
+          type: 'SET_COMMENTS_ENABLED',
+          slideId: currentSlide.id,
+          enabled: true,
+        })
+        if (!commentsResult.ok) {
+          notify(commentsResult.error.message, 'danger')
+          return
+        }
+      }
+      setRevealDialogOpen(false)
+      notify(revealWithComments ? '응답을 공개하고 댓글을 열었어요.' : '응답을 참여자에게 공개했어요.')
+    } finally {
+      setRevealingAnswers(false)
+    }
+  }
+
   return (
     <OrganizerShell>
       <AdminLayout
@@ -1934,7 +1968,7 @@ export function OrganizerControlPage() {
               <span>{currentSlide.eyebrow}</span>
               <div className="stage-kicker__actions">
                 <Chip tone={revealed ? 'success' : 'info'}>{revealed ? '답변 공개됨' : '개인 작성 중'}</Chip>
-                <Button leadingIcon="view_sidebar" onClick={() => setResponsePanelOpen(true)} size="sm" variant="outlined">응답 {stageAnswerCount}</Button>
+                <Button leadingIcon="view_sidebar" onClick={() => setResponsePanelOpen(true)} size="sm" variant={stageAnswerCount ? 'tonal' : 'outlined'}>응답 {stageAnswerCount}개 보기</Button>
                 <Button className="stage-edit-button" leadingIcon="dashboard_customize" onClick={openSlideSandbox} size="sm" variant="tonal">샌드박스</Button>
                 <Button className="stage-edit-button" leadingIcon="edit" onClick={openSlideEditor} size="sm" variant="tonal">슬라이드 편집</Button>
               </div>
@@ -2013,25 +2047,44 @@ export function OrganizerControlPage() {
               </div>
               <Button fullWidth leadingIcon="restart_alt" onClick={() => run({ type: 'RESET_TIMER' })} size="sm" variant="text">타이머 초기화</Button>
             </Card>
-            <Card padding="md">
-              <div className="split">
-                <div><strong>답변 공개</strong><p className="small-text muted">현재 단계 {stageAnswerCount}개</p></div>
-                <Switch
-                  checked={revealed}
-                  label="현재 단계 답변 공개"
-                  onChange={(checked) => run({ type: 'SET_ANSWERS_REVEALED', slideId: currentSlide.id, revealed: checked })}
-                />
+            <Card className={`organizer-reveal-card${revealed ? ' organizer-reveal-card--live' : ''}`} padding="md">
+              <div className="organizer-reveal-card__heading">
+                <span className="organizer-reveal-card__icon"><Icon filled name={revealed ? 'visibility' : 'visibility_off'} /></span>
+                <div>
+                  <strong>{revealed ? '참여자에게 공개 중' : '응답 공개'}</strong>
+                  <p>{revealed ? `응답 ${stageAnswerCount}개를 함께 보고 있어요.` : '모인 응답을 확인한 뒤 한 번에 공개하세요.'}</p>
+                </div>
+                <Chip tone={revealed ? 'success' : 'neutral'}>{stageAnswerCount}개</Chip>
               </div>
-              <div className="divider" />
-              <div className="split">
-                <div><strong>댓글 작성</strong><p className="small-text muted">답변 공개 후 열 수 있어요</p></div>
-                <Switch
-                  checked={commentsEnabled}
-                  disabled={!revealed}
-                  label="현재 단계 댓글 작성"
-                  onChange={(checked) => run({ type: 'SET_COMMENTS_ENABLED', slideId: currentSlide.id, enabled: checked })}
-                />
-              </div>
+              {revealed ? (
+                <>
+                  <div className="organizer-reveal-card__comment-setting">
+                    <div><strong>댓글 작성</strong><span>{commentsEnabled ? '참여자가 댓글을 남길 수 있어요.' : '댓글은 잠겨 있어요.'}</span></div>
+                    <Switch
+                      checked={commentsEnabled}
+                      label="현재 단계 댓글 작성"
+                      onChange={(checked) => run({ type: 'SET_COMMENTS_ENABLED', slideId: currentSlide.id, enabled: checked })}
+                    />
+                  </div>
+                  <Button
+                    fullWidth
+                    leadingIcon="visibility_off"
+                    onClick={() => run({ type: 'SET_ANSWERS_REVEALED', slideId: currentSlide.id, revealed: false })}
+                    variant="outlined"
+                  >공개 종료</Button>
+                </>
+              ) : (
+                <Button
+                  disabled={!stageAnswerCount}
+                  fullWidth
+                  leadingIcon={stageAnswerCount ? 'visibility' : 'hourglass_top'}
+                  onClick={() => {
+                    setRevealWithComments(true)
+                    setRevealDialogOpen(true)
+                  }}
+                  size="lg"
+                >{stageAnswerCount ? `응답 ${stageAnswerCount}개 공개하기` : '첫 응답을 기다리는 중'}</Button>
+              )}
             </Card>
           </aside>
         </div>
@@ -2197,6 +2250,51 @@ export function OrganizerControlPage() {
             ) : <p>{responseDetailAnswer.content}</p>}
           </div>
         ) : null}
+      </Dialog>
+      <Dialog
+        actions={(
+          <>
+            <Button disabled={revealingAnswers} onClick={() => setRevealDialogOpen(false)} variant="text">취소</Button>
+            <Button
+              disabled={!stageAnswerCount}
+              leadingIcon="visibility"
+              loading={revealingAnswers}
+              onClick={() => { void revealAnswersForDiscussion() }}
+            >응답 {stageAnswerCount}개 공개</Button>
+          </>
+        )}
+        description="공개하는 즉시 모든 참여자 화면이 응답 함께 보기로 전환됩니다."
+        onClose={() => setRevealDialogOpen(false)}
+        open={revealDialogOpen}
+        size="sm"
+        title="참여자 응답을 공개할까요?"
+      >
+        <div className="reveal-confirmation">
+          <div className="reveal-confirmation__summary">
+            <span><Icon filled name="group" /></span>
+            <div><strong>{stageAnswerCount}개의 응답</strong><p>{currentSlide.title}</p></div>
+          </div>
+          <div className="reveal-confirmation__preview" aria-label="공개할 응답 미리보기">
+            {stageAnswers.slice(0, 3).map((answer) => (
+              <article key={answer.id}>
+                <strong>{answerAuthor(answer, state.participants)?.nickname ?? '참여자'}</strong>
+                <p>{answer.content}</p>
+              </article>
+            ))}
+            {stageAnswerCount > 3 ? <span>외 {stageAnswerCount - 3}개</span> : null}
+          </div>
+          <button
+            aria-checked={revealWithComments}
+            aria-label="공개와 함께 댓글 열기"
+            className="reveal-confirmation__option"
+            onClick={() => setRevealWithComments((current) => !current)}
+            role="switch"
+            type="button"
+          >
+            <span className={`reveal-confirmation__check${revealWithComments ? ' is-checked' : ''}`}><Icon name={revealWithComments ? 'check' : 'close'} size="sm" /></span>
+            <span><strong>공개와 함께 댓글 열기</strong><small>참여자가 서로의 응답에 댓글을 남길 수 있어요.</small></span>
+          </button>
+        </div>
       </Dialog>
       <Dialog
         actions={(
