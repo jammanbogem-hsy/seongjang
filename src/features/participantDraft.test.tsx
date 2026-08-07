@@ -85,6 +85,30 @@ describe('participant answer draft state', () => {
     })
   })
 
+  it('keeps the organizer timer prominent and exposes its paused state', () => {
+    const seed = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    seed.live.timer = {
+      ...seed.live.timer,
+      remainingSec: 90,
+      status: 'paused',
+      endsAt: null,
+    }
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <ParticipantLivePage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    expect(screen.getByRole('timer', { name: '남은 시간 01:30' })).toHaveTextContent('01:30')
+    expect(screen.getByText('일시정지')).toBeInTheDocument()
+    expect(screen.getByText('주최자가 타이머를 잠시 멈췄습니다.')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: '남은 시간 진행률' })).toHaveAttribute('aria-valuenow', '90')
+  })
+
   it('disables the field, draft save and submission when time is complete', () => {
     const seed = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
     seed.live.timer = {
@@ -106,6 +130,8 @@ describe('participant answer draft state', () => {
     expect(screen.getByLabelText('나의 개인 답변')).toBeDisabled()
     expect(screen.getByRole('button', { name: '임시 저장' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '개인 답변 제출' })).toBeDisabled()
+    expect(screen.getByText('시간 종료')).toBeInTheDocument()
+    expect(screen.getByRole('timer', { name: '남은 시간 00:00' })).toHaveTextContent('00:00')
   })
 
   it('autosaves a changed answer as a draft after the debounce window', async () => {

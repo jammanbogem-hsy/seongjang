@@ -766,6 +766,26 @@ export function ParticipantLivePage() {
     )
   }
   const participant = currentParticipant
+  const timerVisualState = timerView.status === 'complete'
+    ? 'complete'
+    : timerView.status === 'running' && timerView.remainingSec <= 60
+      ? 'urgent'
+      : timerView.status
+  const timerStatusLabel = timerView.status === 'running'
+    ? timerVisualState === 'urgent' ? '마감 임박' : '진행 중'
+    : timerView.status === 'paused'
+      ? '일시정지'
+      : timerView.status === 'complete'
+        ? '시간 종료'
+        : '시작 전'
+  const timerSupportingText = timerView.status === 'complete'
+    ? '입력 시간이 종료되었습니다.'
+    : timerView.status === 'paused'
+      ? '주최자가 타이머를 잠시 멈췄습니다.'
+      : timerView.status === 'idle'
+        ? '주최자가 시작하면 카운트다운됩니다.'
+        : '현재 질문에 답할 수 있는 남은 시간입니다.'
+  const timerProgressPercent = Math.max(0, Math.min(100, timerView.progress * 100))
 
   if (state.room.lifecycle === 'lobby') {
     const participantCount = Math.max(state.participants.length, state.room.participantCount ?? 0)
@@ -976,6 +996,38 @@ export function ParticipantLivePage() {
         progress={{ current: currentSlide.order, total: state.slides.length, label: `${currentSlide.order} / ${state.slides.length} 단계 · 주최자와 동기화` }}
         title={currentSlide.title}
       >
+        <section
+          aria-label={`남은 시간 ${formatTimer(timerView.remainingSec)}`}
+          className={`participant-timer participant-timer--${timerVisualState}`}
+        >
+          <div className="participant-timer__context">
+            <span className="participant-timer__icon"><Icon filled name="timer" size="md" /></span>
+            <div>
+              <span className="participant-timer__status"><span aria-hidden="true" className="live-dot" />{timerStatusLabel}</span>
+              <strong>현재 단계 제한 시간</strong>
+              <p>{timerSupportingText}</p>
+            </div>
+          </div>
+          <div
+            aria-atomic="true"
+            aria-label={`남은 시간 ${formatTimer(timerView.remainingSec)}`}
+            className="participant-timer__clock"
+            role="timer"
+          >
+            <strong>{formatTimer(timerView.remainingSec)}</strong>
+            <span>{timerView.status === 'complete' ? '종료' : '남음'}</span>
+          </div>
+          <div
+            aria-label="남은 시간 진행률"
+            aria-valuemax={state.live.timer.durationSec}
+            aria-valuemin={0}
+            aria-valuenow={timerView.remainingSec}
+            className="participant-timer__progress"
+            role="progressbar"
+          >
+            <span style={{ width: `${timerProgressPercent}%` }} />
+          </div>
+        </section>
         <Card className="session-connection-bar" padding="md" tone="subtle">
           <div>
             <StatusChip label="주최자 세션과 실시간 연결" status="live" />
@@ -990,7 +1042,7 @@ export function ParticipantLivePage() {
         <section aria-live="polite" className="participant-stage">
           <header className="participant-stage-head">
             <span><span className="live-dot" /> LIVE QUESTION</span>
-            <strong>{formatTimer(timerView.remainingSec)}</strong>
+            <strong>{currentSlide.order} / {state.slides.length} 단계</strong>
           </header>
           <div className="participant-stage-body">
             <p className="stage-prompt">{currentSlide.prompt}</p>
