@@ -311,12 +311,6 @@ export const joinOrReenterParticipant = onCall(
       }
 
       const participantCount = Number(eventSnapshot.get('participantCount') ?? 0)
-      if (eventSnapshot.get('registrationOpen') === false) {
-        throw new HttpsError(
-          'failed-precondition',
-          '신규 참여자 입장이 마감되었습니다. 기존 닉네임과 개인 입장코드로는 다시 입장할 수 있습니다.',
-        )
-      }
       const configuredCapacity = Number(eventSnapshot.get('capacity') ?? MAX_PARTICIPANTS)
       const capacity = Math.min(MAX_PARTICIPANTS, Math.max(1, configuredCapacity))
       if (participantCount >= capacity) {

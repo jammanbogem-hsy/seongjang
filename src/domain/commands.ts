@@ -210,8 +210,8 @@ export function executePlatformCommand(
           '이 세션에 등록된 닉네임을 찾지 못했어요. 닉네임을 확인하거나 ‘처음 입장’을 선택해주세요.',
         )
       }
-      if (state.room.lifecycle === 'live' || state.room.lifecycle === 'ended') {
-        return error(state, 'NOT_ALLOWED', '신규 참여자 입장이 마감되었습니다. 기존 닉네임과 개인 입장코드로 다시 입장해주세요.')
+      if (state.room.lifecycle === 'ended') {
+        return error(state, 'NOT_ALLOWED', '종료된 세션에는 새로 입장할 수 없습니다.')
       }
       if (state.participants.length >= state.room.capacity) {
         return error(state, 'ROOM_FULL', `이 방은 최대 ${state.room.capacity}명까지 참여할 수 있어요.`)

@@ -251,8 +251,8 @@ async function updateTimer(
     if (type === 'START_TIMER' || type === 'RESUME_TIMER') {
       transaction.set(db.doc(`events/${eventId}`), {
         lifecycle: 'live',
-        registrationClosedAt: next.updatedAt,
-        registrationOpen: false,
+        registrationClosedAt: null,
+        registrationOpen: true,
         updatedAt: next.updatedAt,
       }, { merge: true })
     }
@@ -325,8 +325,8 @@ async function startSession(
     transaction.set(liveRef, next)
     transaction.set(eventRef, {
       lifecycle: 'live',
-      registrationClosedAt: now,
-      registrationOpen: false,
+      registrationClosedAt: null,
+      registrationOpen: true,
       updatedAt: now,
     }, { merge: true })
     transaction.update(

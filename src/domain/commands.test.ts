@@ -74,6 +74,19 @@ describe('participant entry', () => {
     )
     expect(outcome.result).toMatchObject({ ok: false, error: { code: 'ROOM_FULL' } })
   })
+
+  it('accepts a new participant while the session is live', () => {
+    const seed = createSeedState()
+    seed.room.lifecycle = 'live'
+    const outcome = executePlatformCommand(
+      seed,
+      { type: 'JOIN_PARTICIPANT', input: { entryMode: 'register', roomCode: 'VIBE26', nickname: '늦게 온 별', pin: '2468' } },
+      env,
+    )
+
+    expect(outcome.result.ok).toBe(true)
+    expect(outcome.state.participants.at(-1)?.nickname).toBe('늦게 온 별')
+  })
 })
 
 describe('live controls', () => {
