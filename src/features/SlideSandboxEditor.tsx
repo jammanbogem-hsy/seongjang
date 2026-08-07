@@ -12,8 +12,8 @@ import { Button, Field, Icon, IconButton, Switch } from '../ui'
 
 interface SlideSandboxEditorProps {
   fields: SlideInputField[]
-  locked?: boolean
   onChange: (fields: SlideInputField[]) => void
+  responseCount?: number
   slide: Slide
 }
 
@@ -35,7 +35,7 @@ function nextFieldId(): string {
   return `field-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-export function SlideSandboxEditor({ fields, locked = false, onChange, slide }: SlideSandboxEditorProps) {
+export function SlideSandboxEditor({ fields, onChange, responseCount = 0, slide }: SlideSandboxEditorProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(fields[0]?.id ?? null)
@@ -54,7 +54,7 @@ export function SlideSandboxEditor({ fields, locked = false, onChange, slide }: 
     function handlePointerMove(event: globalThis.PointerEvent) {
       const drag = dragRef.current
       const canvas = canvasRef.current
-      if (!drag || !canvas || locked) return
+      if (!drag || !canvas) return
       const bounds = canvas.getBoundingClientRect()
       const deltaX = ((event.clientX - drag.startX) / bounds.width) * 100
       const deltaY = ((event.clientY - drag.startY) / bounds.height) * 100
@@ -82,10 +82,10 @@ export function SlideSandboxEditor({ fields, locked = false, onChange, slide }: 
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [fields, locked, onChange])
+  }, [fields, onChange])
 
   function addField(type: SlideInputFieldType) {
-    if (locked || fields.length >= MAX_SLIDE_INPUT_FIELDS) return
+    if (fields.length >= MAX_SLIDE_INPUT_FIELDS) return
     const index = fields.length
     const baseLabel = type === 'number' ? '숫자 응답' : '텍스트 응답'
     let label = baseLabel
@@ -107,19 +107,18 @@ export function SlideSandboxEditor({ fields, locked = false, onChange, slide }: 
   }
 
   function updateSelected(patch: Partial<SlideInputField>) {
-    if (!selected || locked) return
+    if (!selected) return
     onChange(fields.map((field) => field.id === selected.id ? { ...field, ...patch } : field))
   }
 
   function removeSelected() {
-    if (!selected || locked) return
+    if (!selected) return
     const next = fields.filter((field) => field.id !== selected.id)
     onChange(next)
     setSelectedId(next[0]?.id ?? null)
   }
 
   function startDrag(event: PointerEvent<HTMLElement>, field: SlideInputField, kind: DragState['kind']) {
-    if (locked) return
     event.preventDefault()
     event.stopPropagation()
     setSelectedId(field.id)
@@ -127,7 +126,7 @@ export function SlideSandboxEditor({ fields, locked = false, onChange, slide }: 
   }
 
   function handleFieldKeyDown(event: KeyboardEvent<HTMLDivElement>, field: SlideInputField) {
-    if (locked || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
     event.preventDefault()
     const direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1
     if (event.shiftKey) {
@@ -145,16 +144,17 @@ export function SlideSandboxEditor({ fields, locked = false, onChange, slide }: 
     <div className="slide-sandbox-editor">
       <div className="slide-sandbox-toolbar" role="toolbar" aria-label="입력 블록 도구">
         <div>
-          <Button disabled={locked || fields.length >= MAX_SLIDE_INPUT_FIELDS} leadingIcon="short_text" onClick={() => addField('text')} size="sm" variant="tonal">텍스트 입력</Button>
-          <Button disabled={locked || fields.length >= MAX_SLIDE_INPUT_FIELDS} leadingIcon="123" onClick={() => addField('number')} size="sm" variant="tonal">숫자 입력</Button>
+          <Button disabled={fields.length >= MAX_SLIDE_INPUT_FIELDS} leadingIcon="short_text" onClick={() => addField('text')} size="sm" variant="tonal">텍스트 입력</Button>
+          <Button disabled={fields.length >= MAX_SLIDE_INPUT_FIELDS} leadingIcon="123" onClick={() => addField('number')} size="sm" variant="tonal">숫자 입력</Button>
         </div>
         <span><Icon name="drag_indicator" size="sm" /> 블록을 끌어 이동하고 모서리로 크기를 바꾸세요</span>
         <strong>{fields.length} / {MAX_SLIDE_INPUT_FIELDS}</strong>
       </div>
 
-      {locked ? (
-        <div className="slide-sandbox-lock" role="status">
-          <Icon name="lock" size="sm" /> 참여자 답변이 있어 입력 구조를 잠갔습니다.
+      {responseCount ? (
+        <div className="slide-sandbox-preservation" role="status">
+          <Icon name="inventory_2" size="sm" />
+          <span><strong>기존 응답 {responseCount}개는 제출 당시 내용으로 별도 보존됩니다.</strong> 지금 수정한 입력 구조는 현재 참여자 화면에 실시간 반영됩니다.</span>
         </div>
       ) : null}
 
@@ -178,14 +178,12 @@ export function SlideSandboxEditor({ fields, locked = false, onChange, slide }: 
               >
                 <span>{field.label}{field.required ? ' *' : ''}</span>
                 <div><Icon name={field.type === 'number' ? '123' : 'short_text'} size="sm" /> {field.placeholder}</div>
-                {!locked ? (
-                  <button
-                    aria-label={`${field.label} 크기 조절`}
-                    className="slide-sandbox-resize"
-                    onPointerDown={(event) => startDrag(event, field, 'resize')}
-                    type="button"
-                  />
-                ) : null}
+                <button
+                  aria-label={`${field.label} 크기 조절`}
+                  className="slide-sandbox-resize"
+                  onPointerDown={(event) => startDrag(event, field, 'resize')}
+                  type="button"
+                />
               </div>
             ))}
             {!fields.length ? (
@@ -204,19 +202,19 @@ export function SlideSandboxEditor({ fields, locked = false, onChange, slide }: 
               <header>
                 <span className="material-symbols-rounded" aria-hidden="true">tune</span>
                 <strong>입력 설정</strong>
-                <IconButton disabled={locked} icon="delete" label="선택한 입력 블록 삭제" onClick={removeSelected} />
+                <IconButton icon="delete" label="선택한 입력 블록 삭제" onClick={removeSelected} />
               </header>
-              <Field disabled={locked} label="입력 이름" maxLength={80} onChange={(event) => updateSelected({ label: event.target.value })} value={selected.label} />
-              <Field disabled={locked} label="안내 문구" maxLength={100} onChange={(event) => updateSelected({ placeholder: event.target.value })} value={selected.placeholder} />
+              <Field label="입력 이름" maxLength={80} onChange={(event) => updateSelected({ label: event.target.value })} value={selected.label} />
+              <Field label="안내 문구" maxLength={100} onChange={(event) => updateSelected({ placeholder: event.target.value })} value={selected.placeholder} />
               <div className="slide-sandbox-range">
                 <label htmlFor="sandbox-field-width">너비 <output>{selected.width}%</output></label>
-                <input disabled={locked} id="sandbox-field-width" max={100 - selected.x} min={24} onChange={(event) => updateSelected({ width: Number(event.target.value) })} type="range" value={selected.width} />
+                <input id="sandbox-field-width" max={100 - selected.x} min={24} onChange={(event) => updateSelected({ width: Number(event.target.value) })} type="range" value={selected.width} />
               </div>
               <div className="slide-sandbox-range">
                 <label htmlFor="sandbox-field-height">높이 <output>{selected.height}%</output></label>
-                <input disabled={locked} id="sandbox-field-height" max={100 - selected.y} min={12} onChange={(event) => updateSelected({ height: Number(event.target.value) })} type="range" value={selected.height} />
+                <input id="sandbox-field-height" max={100 - selected.y} min={12} onChange={(event) => updateSelected({ height: Number(event.target.value) })} type="range" value={selected.height} />
               </div>
-              <Switch checked={selected.required} disabled={locked} label="필수 입력" onChange={(required) => updateSelected({ required })} />
+              <Switch checked={selected.required} label="필수 입력" onChange={(required) => updateSelected({ required })} />
               <p>방향키로 이동 · Shift + 방향키로 크기 조절</p>
             </>
           ) : (

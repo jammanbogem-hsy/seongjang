@@ -2,6 +2,11 @@ import type { SlideInputField } from './models'
 
 export const MAX_SLIDE_INPUT_FIELDS = 6
 
+export interface StoredAnswerRow {
+  label: string
+  value: string
+}
+
 export function slideInputFieldsValid(fields: SlideInputField[]): boolean {
   if (fields.length > MAX_SLIDE_INPUT_FIELDS) return false
   const labels = new Set<string>()
@@ -43,6 +48,20 @@ export function parseSlideFieldAnswer(
     const line = lines.find((candidate) => candidate.startsWith(prefix))
     return [field.id, line ? line.slice(prefix.length).trimStart() : '']
   }))
+}
+
+export function parseStoredAnswerRows(content: string): StoredAnswerRow[] {
+  const lines = content.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean)
+  if (!lines.length || lines.length > MAX_SLIDE_INPUT_FIELDS) return []
+  const rows = lines.map((line): StoredAnswerRow | null => {
+    const separator = line.indexOf(':')
+    if (separator < 1) return null
+    const label = line.slice(0, separator).trim()
+    const value = line.slice(separator + 1).trim()
+    if (!label || label.length > 80 || !value) return null
+    return { label, value }
+  })
+  return rows.every((row): row is StoredAnswerRow => row !== null) ? rows : []
 }
 
 export function slideFieldAnswerComplete(

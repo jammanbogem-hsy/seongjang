@@ -1020,15 +1020,19 @@ select:focus-visible,
   font-size: 13px;
 }
 
-.slide-sandbox-lock {
+.slide-sandbox-preservation {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 16px;
-  color: #6b4f00;
+  padding: 10px 16px;
+  color: #174ea6;
   font-size: 13px;
-  font-weight: 600;
-  background: #fff4d2;
+  line-height: 1.45;
+  background: #e8f0fe;
+}
+
+.slide-sandbox-preservation strong {
+  font-weight: 700;
 }
 
 .slide-sandbox-layout {

@@ -312,6 +312,51 @@ describe('organizer live controls', () => {
     expect(screen.getByText('예상 사용자 수 *')).toBeInTheDocument()
   })
 
+  it('edits a live input structure while preserving the submitted response snapshot', async () => {
+    const seed = createSeedState()
+    const slide = seed.slides[seed.live.activeSlideIndex]
+    slide.inputFields = [
+      { id: 'field-name', type: 'text', label: '기존 질문', placeholder: '기존 안내', required: true, x: 6, y: 44, width: 54, height: 14 },
+    ]
+    seed.answers = [{
+      id: 'answer-preserved',
+      participantId: seed.participants[0].id,
+      slideId: slide.id,
+      content: '기존 질문: 먼저 제출한 답변',
+      status: 'submitted',
+      createdAt: '2026-08-07T01:00:00.000Z',
+      updatedAt: '2026-08-07T01:00:00.000Z',
+      submittedAt: '2026-08-07T01:00:00.000Z',
+    }]
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <OrganizerControlPage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '샌드박스' }))
+    expect(screen.getByText(/기존 응답 1개는 제출 당시 내용으로 별도 보존됩니다/)).toBeInTheDocument()
+    const labelInput = screen.getByRole('textbox', { name: '입력 이름' })
+    expect(labelInput).toBeEnabled()
+    fireEvent.change(labelInput, { target: { value: '새 질문' } })
+    fireEvent.click(screen.getByRole('button', { name: '편집 완료' }))
+    await act(async () => { await Promise.resolve() })
+
+    const persisted = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    expect(persisted.slides[seed.live.activeSlideIndex].inputFields[0].label).toBe('새 질문')
+    expect(persisted.answers[0].content).toBe('기존 질문: 먼저 제출한 답변')
+
+    fireEvent.click(screen.getByRole('button', { name: '응답 1' }))
+    const responseDrawer = screen.getByRole('complementary', { name: '현재 슬라이드 응답' })
+    expect(responseDrawer).toHaveTextContent('기존 질문')
+    expect(responseDrawer).toHaveTextContent('먼저 제출한 답변')
+    expect(responseDrawer).not.toHaveTextContent('새 질문—')
+  })
+
   it('collects sandbox field values as one compatible answer', async () => {
     const seed = createSeedState()
     const slide = seed.slides[seed.live.activeSlideIndex]

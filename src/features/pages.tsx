@@ -12,6 +12,7 @@ import { createEmbedSnippet, createTextExport, type ExportFormat } from '../doma
 import {
   formatSlideFieldAnswer,
   parseSlideFieldAnswer,
+  parseStoredAnswerRows,
   slideFieldAnswerComplete,
   slideInputFieldsValid,
 } from '../domain/slideFields'
@@ -1534,7 +1535,7 @@ export function OrganizerControlPage() {
   const submittedCount = state.submissions.filter((submission) => submission.status === 'submitted').length
   const reviewAnswer = stageAnswers.find((answer) => answer.id === reviewAnswerId)
   const responseDetailAnswer = stageAnswers.find((answer) => answer.id === responseDetailAnswerId)
-  const slideStructureLocked = state.answers.some((answer) => answer.slideId === currentSlide.id)
+  const responseDetailRows = responseDetailAnswer ? parseStoredAnswerRows(responseDetailAnswer.content) : []
   const slideDraftValid = Boolean(
     slideDraft.eyebrow.trim()
     && slideDraft.title.trim()
@@ -2147,17 +2148,17 @@ export function OrganizerControlPage() {
             <div className="response-drawer__list" aria-live="polite">
               {stageAnswers.map((answer) => {
                 const participant = answerAuthor(answer, state.participants)
-                const values = parseSlideFieldAnswer(currentSlide.inputFields ?? [], answer.content)
+                const storedRows = parseStoredAnswerRows(answer.content)
                 return (
                   <article className="response-drawer-card" key={answer.id}>
                     <header>
                       <span className="avatar">{participant?.nickname.slice(0, 1) ?? '?'}</span>
-                      <div><strong>{participant?.nickname ?? '참여자'}</strong><span>제출 완료</span></div>
+                      <div><strong>{participant?.nickname ?? '참여자'}</strong><span>제출 당시 응답</span></div>
                     </header>
-                    {(currentSlide.inputFields ?? []).length ? (
+                    {storedRows.length ? (
                       <dl>
-                        {(currentSlide.inputFields ?? []).map((field) => (
-                          <div key={field.id}><dt>{field.label}</dt><dd>{values[field.id] || '—'}</dd></div>
+                        {storedRows.map((row, index) => (
+                          <div key={`${row.label}-${index}`}><dt>{row.label}</dt><dd>{row.value}</dd></div>
                         ))}
                       </dl>
                     ) : <p>{answer.content}</p>}
@@ -2178,7 +2179,7 @@ export function OrganizerControlPage() {
       ) : null}
       <Dialog
         actions={<Button onClick={() => setResponseDetailAnswerId(null)}>확인</Button>}
-        description="현재 슬라이드에 제출된 참여자 응답입니다."
+        description="입력 구조 변경과 별도로 보존된 제출 당시 참여자 응답입니다."
         onClose={() => setResponseDetailAnswerId(null)}
         open={Boolean(responseDetailAnswer)}
         size="sm"
@@ -2186,11 +2187,11 @@ export function OrganizerControlPage() {
       >
         {responseDetailAnswer ? (
           <div className="response-detail">
-            {(currentSlide.inputFields ?? []).length ? (
-              (currentSlide.inputFields ?? []).map((field) => (
-                <section key={field.id}>
-                  <span><Icon name={field.type === 'number' ? '123' : 'short_text'} size="sm" /> {field.label}</span>
-                  <strong>{parseSlideFieldAnswer(currentSlide.inputFields ?? [], responseDetailAnswer.content)[field.id] || '응답 없음'}</strong>
+            {responseDetailRows.length ? (
+              responseDetailRows.map((row, index) => (
+                <section key={`${row.label}-${index}`}>
+                  <span><Icon name="history" size="sm" /> {row.label}</span>
+                  <strong>{row.value}</strong>
                 </section>
               ))
             ) : <p>{responseDetailAnswer.content}</p>}
@@ -2205,7 +2206,7 @@ export function OrganizerControlPage() {
           </>
         )}
         className="slide-sandbox-dialog"
-        description="입력 블록을 배치하면 참여자 화면에 즉시 반영됩니다. 블록 변경은 자동 저장됩니다."
+        description="입력 블록 변경은 기존 응답과 별도로 자동 저장되며 참여자 화면에 즉시 반영됩니다."
         onClose={() => { void closeSlideSandbox() }}
         open={slideSandboxOpen}
         size="lg"
@@ -2213,8 +2214,8 @@ export function OrganizerControlPage() {
       >
         <SlideSandboxEditor
           fields={slideDraft.inputFields ?? []}
-          locked={slideStructureLocked}
           onChange={(inputFields) => setSlideDraft((current) => ({ ...current, inputFields }))}
+          responseCount={stageAnswerCount}
           slide={{ ...currentSlide, ...slideDraft }}
         />
       </Dialog>
