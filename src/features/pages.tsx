@@ -426,77 +426,88 @@ export function JoinPage() {
   const isReentry = entryMode === 'reenter'
 
   return (
-    <PublicShell>
-      <main className="page narrow" id="main-content">
+    <PublicShell hideFooter>
+      <main className="page join-page" id="main-content">
         <div className="join-layout">
           <Card className="join-panel" padding="lg">
-            <span className="eyebrow">ROOM · {roomCode.toUpperCase()}</span>
-            <h1 className="join-title">
-              {isReentry ? '이전 기록으로 다시 입장하세요.' : '닉네임과 입장코드를 만들어주세요.'}
-            </h1>
-            <p className="muted join-description">
-              {isReentry
-                ? '처음 등록한 닉네임과 개인 입장코드 4자리를 그대로 입력하세요.'
-                : '이 세션에서 사용할 닉네임과 기억하기 쉬운 숫자 4자리 개인 입장코드를 정합니다.'}
-            </p>
-            <div aria-label="입장 방법" className="join-mode-switch" role="group">
-              <Button
-                aria-pressed={!isReentry}
-                fullWidth
-                leadingIcon="person_add"
-                onClick={() => selectEntryMode('register')}
-                variant={!isReentry ? 'tonal' : 'text'}
-              >
-                처음 입장
-              </Button>
-              <Button
-                aria-pressed={isReentry}
-                fullWidth
-                leadingIcon="login"
-                onClick={() => selectEntryMode('reenter')}
-                variant={isReentry ? 'tonal' : 'text'}
-              >
-                다시 입장
-              </Button>
-            </div>
-            <form className="form-grid" onSubmit={submit}>
-              <Field label="방 코드" readOnly value={roomCode.toUpperCase()} />
-              <Field
-                autoComplete="nickname"
-                label="닉네임"
-                maxLength={16}
-                onChange={(event) => { setNickname(event.target.value); setError('') }}
-                placeholder="예: 밤하늘"
-                required
-                value={nickname}
-              />
-              <Field
-                autoComplete={isReentry ? 'current-password' : 'new-password'}
-                helpText={isReentry
-                  ? '처음 입장할 때 등록한 숫자 4자리를 입력하세요.'
-                  : '튕기거나 다른 기기에서 다시 입장할 때 필요합니다.'}
-                inputMode="numeric"
-                label={isReentry ? '기존 개인 입장코드 4자리' : '개인 입장코드 4자리 만들기'}
-                maxLength={4}
-                onChange={(event) => { setPin(event.target.value.replace(/\D/g, '').slice(0, 4)); setError('') }}
-                pattern="\d{4}"
-                placeholder="0000"
-                required
-                type="password"
-                value={pin}
-              />
-              {error ? <p className="join-form-error" role="alert"><Icon name="error" size="sm" />{error}</p> : null}
-              <Button
-                disabled={nickname.trim().length < 2 || pin.length !== 4}
-                fullWidth
-                loading={joining}
-                size="lg"
-                trailingIcon="arrow_forward"
-                type="submit"
-              >
-                {isReentry ? '이전 기록으로 다시 입장' : '닉네임 등록하고 입장'}
-              </Button>
-            </form>
+            <section className="join-panel__intro">
+              <span className="eyebrow">ROOM · {roomCode.toUpperCase()}</span>
+              <h1 className="join-title">
+                {isReentry ? '이전 기록으로 다시 입장하세요.' : '닉네임과 입장코드를 만들어주세요.'}
+              </h1>
+              <p className="muted join-description">
+                {isReentry
+                  ? '처음 등록한 닉네임과 개인 입장코드 4자리를 그대로 입력하세요.'
+                  : '이 세션에서 사용할 닉네임과 기억하기 쉬운 숫자 4자리 개인 입장코드를 정합니다.'}
+              </p>
+              <p className="join-pin-note">
+                <Icon name="lock" size="sm" />
+                <span><strong>입장코드를 기억해주세요.</strong><br />재접속할 때 같은 닉네임과 함께 사용합니다.</span>
+              </p>
+            </section>
+            <section className="join-panel__entry">
+              <div aria-label="입장 방법" className="join-mode-switch" role="group">
+                <Button
+                  aria-pressed={!isReentry}
+                  fullWidth
+                  leadingIcon="person_add"
+                  onClick={() => selectEntryMode('register')}
+                  variant={!isReentry ? 'tonal' : 'text'}
+                >
+                  처음 입장
+                </Button>
+                <Button
+                  aria-pressed={isReentry}
+                  fullWidth
+                  leadingIcon="login"
+                  onClick={() => selectEntryMode('reenter')}
+                  variant={isReentry ? 'tonal' : 'text'}
+                >
+                  다시 입장
+                </Button>
+              </div>
+              <form className="join-form" onSubmit={submit}>
+                <div className="join-form__fields">
+                  <Field fieldClassName="join-form__room" label="방 코드" readOnly value={roomCode.toUpperCase()} />
+                  <Field
+                    autoComplete="nickname"
+                    label="닉네임"
+                    maxLength={16}
+                    onChange={(event) => { setNickname(event.target.value); setError('') }}
+                    placeholder="예: 밤하늘"
+                    required
+                    value={nickname}
+                  />
+                  <Field
+                    autoComplete={isReentry ? 'current-password' : 'new-password'}
+                    fieldClassName="join-form__pin"
+                    helpText={isReentry
+                      ? '처음 입장할 때 등록한 숫자 4자리를 입력하세요.'
+                      : '튕기거나 다른 기기에서 다시 입장할 때 필요합니다.'}
+                    inputMode="numeric"
+                    label={isReentry ? '기존 개인 입장코드 4자리' : '개인 입장코드 4자리 만들기'}
+                    maxLength={4}
+                    onChange={(event) => { setPin(event.target.value.replace(/\D/g, '').slice(0, 4)); setError('') }}
+                    pattern="\d{4}"
+                    placeholder="0000"
+                    required
+                    type="password"
+                    value={pin}
+                  />
+                </div>
+                {error ? <p className="join-form-error" role="alert"><Icon name="error" size="sm" />{error}</p> : null}
+                <Button
+                  disabled={nickname.trim().length < 2 || pin.length !== 4}
+                  fullWidth
+                  loading={joining}
+                  size="lg"
+                  trailingIcon="arrow_forward"
+                  type="submit"
+                >
+                  {isReentry ? '이전 기록으로 다시 입장' : '닉네임 등록하고 입장'}
+                </Button>
+              </form>
+            </section>
           </Card>
           <div className="join-art">
             <CatIllustration loading="eager" size="hero" variant="lobby" />
@@ -507,9 +518,6 @@ export function JoinPage() {
             </div>
           </div>
         </div>
-        <OutcomeNote>
-          <strong>개인 입장코드 보관 안내</strong><br />개인 입장코드는 다시 접속하거나 주최자에게 참여 지원을 받을 때 사용됩니다. 닉네임과 함께 기억해주세요.
-        </OutcomeNote>
       </main>
       {renderToasts()}
     </PublicShell>

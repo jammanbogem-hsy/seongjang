@@ -194,7 +194,15 @@ export function ParticipantShell({ children }: { children: ReactNode }) {
   )
 }
 
-export function PublicShell({ children, minimal = false }: { children: ReactNode; minimal?: boolean }) {
+export function PublicShell({
+  children,
+  hideFooter = false,
+  minimal = false,
+}: {
+  children: ReactNode
+  hideFooter?: boolean
+  minimal?: boolean
+}) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { state } = usePlatform()
@@ -213,7 +221,7 @@ export function PublicShell({ children, minimal = false }: { children: ReactNode
       roomCode={minimal ? undefined : state.room.code}
     >
       {children}
-      {!minimal ? <footer className="site-footer">
+      {!minimal && !hideFooter ? <footer className="site-footer">
         <div>
           <strong>VibeCoding</strong>
           <p>한 사람의 생각부터 모두의 기록까지.</p>
