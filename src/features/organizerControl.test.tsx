@@ -284,9 +284,18 @@ describe('organizer live controls', () => {
     fireEvent.click(screen.getByRole('button', { name: '샌드박스' }))
     expect(screen.getByRole('dialog', { name: '슬라이드 샌드박스' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '텍스트 입력' }))
-    fireEvent.change(screen.getByRole('textbox', { name: '입력 이름' }), {
-      target: { value: '팀 이름' },
-    })
+    const labelInput = screen.getByRole('textbox', { name: '입력 이름' })
+    labelInput.focus()
+    fireEvent.change(labelInput, { target: { value: '팀' } })
+    expect(labelInput).toHaveFocus()
+    fireEvent.change(labelInput, { target: { value: '팀 이름' } })
+    expect(labelInput).toHaveFocus()
+    const placeholderInput = screen.getByRole('textbox', { name: '안내 문구' })
+    placeholderInput.focus()
+    fireEvent.change(placeholderInput, { target: { value: '팀' } })
+    expect(placeholderInput).toHaveFocus()
+    fireEvent.change(placeholderInput, { target: { value: '팀 이름을 입력하세요' } })
+    expect(placeholderInput).toHaveFocus()
     fireEvent.click(screen.getByRole('button', { name: '숫자 입력' }))
     fireEvent.change(screen.getByRole('textbox', { name: '입력 이름' }), {
       target: { value: '예상 사용자 수' },

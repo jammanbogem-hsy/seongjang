@@ -29,6 +29,8 @@ export function Dialog({
   const titleId = useId()
   const descriptionId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   useEffect(() => {
     if (!open) return
@@ -41,7 +43,7 @@ export function Dialog({
     })
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') onCloseRef.current()
       if (event.key !== 'Tab' || !panelRef.current) return
       const focusables = Array.from(
         panelRef.current.querySelectorAll<HTMLElement>(
@@ -66,7 +68,7 @@ export function Dialog({
       document.removeEventListener('keydown', handleKeyDown)
       previousFocus?.focus()
     }
-  }, [onClose, open])
+  }, [open])
 
   if (!open) return null
 
