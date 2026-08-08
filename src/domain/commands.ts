@@ -68,6 +68,23 @@ function isWebUrl(value: string): boolean {
   }
 }
 
+const PROJECT_COVER_IMAGES = new Set([
+  '/assets/illustrations/cat-exhibition.webp',
+  '/assets/illustrations/cat-ideation.webp',
+  '/assets/illustrations/cat-lobby.webp',
+  '/assets/illustrations/cat-submission.webp',
+  '/assets/illustrations/cat-timer.webp',
+])
+
+function isProjectCoverImage(value: string): boolean {
+  if (!value || PROJECT_COVER_IMAGES.has(value)) return true
+  try {
+    return new URL(value).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 function iso(now: number): string {
   return new Date(now).toISOString()
 }
@@ -132,6 +149,12 @@ function validateSubmission(input: SubmitProjectInput): CommandResult<undefined>
     return {
       ok: false,
       error: { code: 'INVALID_SUBMISSION', message: '링크는 http 또는 https 주소로 입력해주세요.' },
+    }
+  }
+  if (!isProjectCoverImage(input.coverImage?.trim() ?? '')) {
+    return {
+      ok: false,
+      error: { code: 'INVALID_SUBMISSION', message: '대표 이미지는 제공된 표지 또는 HTTPS 주소를 사용해주세요.' },
     }
   }
   return { ok: true, value: undefined }
@@ -1066,9 +1089,7 @@ export function executePlatformCommand(
 
     case 'SET_EXHIBITION_PUBLISHED': {
       const withExhibition = { ...state, exhibitionPublished: command.published }
-      const publishedSnapshot = state.publishedSnapshot
-        ? createPublishedSnapshot(withExhibition, nowIso)
-        : null
+      const publishedSnapshot = createPublishedSnapshot(withExhibition, nowIso)
       return success(
         state,
         { ...withExhibition, publishedSnapshot },

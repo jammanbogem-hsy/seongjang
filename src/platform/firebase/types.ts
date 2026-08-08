@@ -26,6 +26,7 @@ export interface FirebaseAnswerDraftView {
 }
 
 export interface FirebaseProjectDraftView {
+  coverImage: string
   description: string
   demoUrl: string
   githubUrl: string
@@ -84,6 +85,7 @@ export interface SaveAnswerDraftRequest {
 
 export interface SaveProjectDraftRequest {
   baseRevision: number
+  coverImage?: string
   description: string
   demoUrl?: string
   githubUrl?: string

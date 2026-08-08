@@ -17,6 +17,22 @@ function run(state: PrototypeState, command: Parameters<typeof executePlatformCo
 }
 
 describe('organizer and participant domain workflow', () => {
+  it('creates the first public revision when the organizer publishes the exhibition', () => {
+    const state = { ...createSeedState(), publishedSnapshot: null, exhibitionPublished: false }
+    const published = executePlatformCommand(
+      state,
+      { type: 'SET_EXHIBITION_PUBLISHED', published: true },
+      env,
+    )
+
+    expect(published.result.ok).toBe(true)
+    expect(published.state.exhibitionPublished).toBe(true)
+    expect(published.state.publishedSnapshot?.data.exhibitionPublished).toBe(true)
+    expect(published.state.publishedSnapshot?.data.projects).toHaveLength(
+      state.submissions.filter((submission) => submission.status === 'submitted').length,
+    )
+  })
+
   it('projects entry, live answer, comment and project data into a publication', () => {
     let state = createSeedState()
     state.room.lifecycle = 'lobby'

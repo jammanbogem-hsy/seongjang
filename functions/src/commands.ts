@@ -71,6 +71,7 @@ const MAX_SLIDES = 12
 const MAX_SLIDE_INPUT_FIELDS = 6
 const COMMAND_WINDOW_MS = 60_000
 const ALLOWED_SLIDE_ILLUSTRATIONS = new Set([
+  '/assets/illustrations/cat-exhibition.webp',
   '/assets/illustrations/cat-ideation.webp',
   '/assets/illustrations/cat-lobby.webp',
   '/assets/illustrations/cat-submission.webp',
@@ -1286,6 +1287,13 @@ function projectInput(input: UnknownRecord): {
   const retrospective = optionalString(input, 'retrospective', 1_200)
   const demoUrl = optionalWebUrl(optionalString(input, 'demoUrl', 2_000))
   const githubUrl = optionalWebUrl(optionalString(input, 'githubUrl', 2_000))
+  const requestedCoverImage = optionalString(input, 'coverImage', 2_000)
+  const coverImage = requestedCoverImage && !ALLOWED_SLIDE_ILLUSTRATIONS.has(requestedCoverImage)
+    ? optionalWebUrl(requestedCoverImage)
+    : requestedCoverImage
+  if (coverImage && !ALLOWED_SLIDE_ILLUSTRATIONS.has(coverImage) && !coverImage.startsWith('https://')) {
+    throw new HttpsError('invalid-argument', '대표 이미지는 HTTPS 주소를 사용해주세요.')
+  }
   if (!title || !pitch || !description || !retrospective) {
     throw new HttpsError('invalid-argument', '제목, 한 줄 소개, 설명과 회고를 모두 적어주세요.')
   }
@@ -1300,7 +1308,7 @@ function projectInput(input: UnknownRecord): {
     demoUrl,
     githubUrl,
     tags: stringArray(input.tags, 6, 40),
-    coverImage: optionalString(input, 'coverImage', 2_000) || '/assets/illustrations/cat-submission.webp',
+    coverImage: coverImage || '/assets/illustrations/cat-submission.webp',
   }
 }
 

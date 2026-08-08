@@ -96,6 +96,32 @@ function liveMessageTime(value: string): string {
   return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
 }
 
+const PROJECT_COVER_OPTIONS = [
+  { label: '완성 고양이', value: '/assets/illustrations/cat-submission.webp' },
+  { label: '전시 고양이', value: '/assets/illustrations/cat-exhibition.webp' },
+  { label: '아이디어 고양이', value: '/assets/illustrations/cat-ideation.webp' },
+  { label: '발표 고양이', value: '/assets/illustrations/cat-timer.webp' },
+] as const
+
+function isValidHttpUrl(value: string): boolean {
+  if (!value.trim()) return true
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' || url.protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
+function isValidProjectCover(value: string): boolean {
+  if (PROJECT_COVER_OPTIONS.some((option) => option.value === value)) return true
+  try {
+    return new URL(value).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 function ResultLink({ to, children }: { to: string; children: ReactNode }) {
   return (
     <Link className="result-link" to={to}>
@@ -1275,6 +1301,7 @@ export function SubmissionPage() {
   const navigate = useNavigate()
   const { currentParticipant, dispatchAsync, state } = usePlatform()
   const { notify, renderToasts } = useNotices()
+  const publicSlug = state.room.publicSlug || (state.room.id.startsWith('session-') ? state.room.id.slice(8) : PUBLIC_SLUG)
   const existingDraft = state.submissions.find(
     (submission) => submission.participantId === currentParticipant?.id && submission.status === 'draft',
   )
@@ -1290,6 +1317,7 @@ export function SubmissionPage() {
     githubUrl: existing?.githubUrl ?? '',
     tags: existing?.tags.join(', ') ?? '',
     retrospective: existing?.retrospective ?? '',
+    coverImage: existing?.coverImage ?? '/assets/illustrations/cat-submission.webp',
   }
   const projectDraftKey = `vibecoding.project-draft.${currentParticipant?.id ?? 'guest'}`
   const hasStoredProjectDraft = typeof window !== 'undefined'
@@ -1325,7 +1353,6 @@ export function SubmissionPage() {
           participantId: currentParticipant.id,
           ...form,
           tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
-          coverImage: '/assets/illustrations/cat-submission.webp',
           submit: false,
         },
       })).ok
@@ -1369,14 +1396,13 @@ export function SubmissionPage() {
           participantId: currentParticipant.id,
           ...form,
           tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
-          coverImage: '/assets/illustrations/cat-submission.webp',
           submit,
         },
       }),
       notify,
     )
     if (ok) projectAutosave.markSaved()
-    if (ok && submit) notify('제출을 완료했어요. 주최자가 새 공개 리비전을 발행하면 전시에 반영됩니다.', 'info')
+    if (ok && submit) notify('전시용 게시물을 제출했어요. 주최자가 전시를 공개하면 바로 보여요.', 'info')
   }
 
   if (!currentParticipant) {
@@ -1396,23 +1422,82 @@ export function SubmissionPage() {
     )
   }
 
+  const coverImage = form.coverImage?.trim() || '/assets/illustrations/cat-submission.webp'
+  const tags = form.tags.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 6)
+  const hasPublicLink = Boolean(form.demoUrl.trim() || form.githubUrl.trim())
+  const projectReady = Boolean(
+    form.title.trim()
+    && form.pitch.trim()
+    && form.description.trim()
+    && form.retrospective.trim()
+    && hasPublicLink
+    && isValidHttpUrl(form.demoUrl)
+    && isValidHttpUrl(form.githubUrl)
+    && isValidProjectCover(coverImage)
+  )
+  const completedSections = [
+    Boolean(form.title.trim() && form.pitch.trim()),
+    Boolean(coverImage && isValidProjectCover(coverImage)),
+    Boolean(form.description.trim() && hasPublicLink),
+    Boolean(form.retrospective.trim()),
+  ].filter(Boolean).length
+  const publishedProject = state.publishedSnapshot?.data.projects.some((project) => (
+    project.key === submittedExisting?.id
+    || (project.title === submittedExisting?.title && project.maker.name === currentParticipant.nickname)
+  )) ?? false
+  const hasUnpublishedChanges = Boolean(
+    existingDraft
+    && (!submittedExisting || Date.parse(existingDraft.updatedAt) > Date.parse(submittedExisting.updatedAt)),
+  )
+  const publicationLabel = publishedProject
+    ? '전시 공개 중'
+    : hasUnpublishedChanges
+      ? '수정 중 · 다시 제출 필요'
+      : submittedExisting
+        ? '제출 완료 · 주최자 공개 대기'
+        : '전시 게시물 작성 중'
+
   return (
     <ParticipantShell>
       <ParticipantLayout
         aside={
-          <Card className="submission-preview" padding="lg" tone="warm">
-            <CatIllustration decorative size="lg" variant={existing?.status === 'submitted' ? 'celebrate' : 'autosave'} />
-            <Chip icon="person" tone="warning">개인 제출</Chip>
-            <h3>{form.title || '나의 작품 제목'}</h3>
-            <p>{form.pitch || '한 줄 소개가 이곳에 표시됩니다.'}</p>
-            <div className="chip-row">{form.tags.split(',').filter(Boolean).slice(0, 3).map((tag) => <Chip key={tag}>{tag.trim()}</Chip>)}</div>
-          </Card>
+          <div className="submission-preview-stack">
+            <Card className="submission-post-preview" padding="none">
+              <div className="submission-post-preview__cover">
+                <img
+                  alt="전시 카드 대표 이미지"
+                  onError={(event) => { event.currentTarget.src = '/assets/illustrations/cat-submission.webp' }}
+                  src={coverImage}
+                />
+                <Chip icon={publishedProject ? 'public' : 'edit'} tone={publishedProject ? 'success' : 'neutral'}>{publicationLabel}</Chip>
+              </div>
+              <div className="submission-post-preview__content">
+                <span className="eyebrow">MADE BY {currentParticipant.nickname}</span>
+                <h3>{form.title || '나의 작품 제목'}</h3>
+                <p>{form.pitch || '작품을 한 문장으로 소개해주세요.'}</p>
+                <div className="chip-row">{tags.length ? tags.slice(0, 3).map((tag) => <Chip key={tag}>{tag}</Chip>) : <Chip tone="neutral">태그</Chip>}</div>
+                <div className="submission-post-preview__links">
+                  <span className={form.demoUrl.trim() ? 'is-ready' : ''}><Icon name="open_in_new" size="sm" /> 실행 링크</span>
+                  <span className={form.githubUrl.trim() ? 'is-ready' : ''}><Icon name="code" size="sm" /> GitHub</span>
+                </div>
+              </div>
+            </Card>
+            <Card className="submission-readiness" padding="md" tone="subtle">
+              <div><strong>게시물 준비 {completedSections} / 4</strong><span>{projectReady ? '전시용으로 제출할 수 있어요.' : '필수 내용과 공개 링크를 채워주세요.'}</span></div>
+              <Progress max={4} value={completedSections} />
+              {publishedProject ? <Button fullWidth leadingIcon="museum" onClick={() => navigate(`/exhibitions/${publicSlug}`)} variant="tonal">전시에서 보기</Button> : null}
+            </Card>
+          </div>
         }
-        description="과정에서 남긴 생각을 한 사람의 작품 카드와 README로 이어주세요. 팀 제출은 지원하지 않습니다."
-        eyebrow="FINAL · INDIVIDUAL SUBMISSION"
-        title="나의 최종 작품"
+        description="대표 이미지와 링크, 작품 이야기를 하나의 전시 카드로 만듭니다."
+        eyebrow="MY EXHIBITION POST"
+        title="나의 전시 게시물"
       >
-        <OutcomeNote><strong>개인 제출 원칙</strong><br />참여자당 한 작품만 저장됩니다. 다시 제출하면 나의 기존 작품이 갱신됩니다.</OutcomeNote>
+        <section className={`submission-publication-status${publishedProject ? ' is-published' : ''}`}>
+          <span><Icon filled name={publishedProject ? 'public' : submittedExisting ? 'schedule' : 'post_add'} /></span>
+          <div><strong>{publicationLabel}</strong><p>{publishedProject ? '현재 공개 전시에서 다른 참여자가 이 작품을 볼 수 있어요.' : '제출한 게시물은 주최자가 전시를 공개할 때 모두에게 보입니다.'}</p></div>
+          {publishedProject ? <Button leadingIcon="museum" onClick={() => navigate(`/exhibitions/${publicSlug}`)} size="sm" variant="outlined">열어보기</Button> : null}
+        </section>
         {projectConflict ? (
           <OutcomeNote tone="warm">
             이 기기의 초안보다 Firebase에 더 최신 작품 정보가 있어 자동저장을 멈췄습니다.
@@ -1426,25 +1511,73 @@ export function SubmissionPage() {
             >내 초안으로 계속 편집</Button>
           </OutcomeNote>
         ) : null}
-        <Card padding="lg">
-          <div className="form-grid">
-            <Field label="작품명" maxLength={60} onChange={(event) => update('title', event.target.value)} placeholder="작품명을 입력하세요" required value={form.title} />
-            <Field label="한 줄 소개" maxLength={120} onChange={(event) => update('pitch', event.target.value)} placeholder="무엇을 누구에게 어떻게 바꾸는지 한 문장으로" required value={form.pitch} />
-            <Textarea label="상세 설명" maxLength={1500} onChange={(event) => update('description', event.target.value)} required rows={6} showCount value={form.description} />
-            <div className="grid two">
-              <Field label="실행 URL" onChange={(event) => update('demoUrl', event.target.value)} placeholder="https://" type="url" value={form.demoUrl} />
-              <Field label="GitHub URL" onChange={(event) => update('githubUrl', event.target.value)} placeholder="https://github.com/" type="url" value={form.githubUrl} />
-            </div>
-            <Field helpText="쉼표로 구분하며 최대 6개까지 전시에 표시됩니다." label="기술·주제 태그" onChange={(event) => update('tags', event.target.value)} placeholder="React, Firebase, 교육" value={form.tags} />
-            <Textarea label="제작 회고" maxLength={1200} onChange={(event) => update('retrospective', event.target.value)} required rows={5} showCount value={form.retrospective} />
-            <div className="split mobile-stack">
-              <AutosaveStatus phase={projectAutosave.phase} savedAt={projectAutosave.savedAt} />
-              <MascotAction compactOnly label="작품 초안을 자동 저장하고 있어요" variant="autosave">
-                <Button disabled={projectConflict} onClick={() => { void save(false) }} variant="text">임시 저장</Button>
-                <Button disabled={projectConflict} leadingIcon="rocket_launch" onClick={() => { void save(true) }}>개인 작품 제출</Button>
-              </MascotAction>
-            </div>
+        <Card className="submission-composer" padding="none">
+          <header className="submission-composer__header">
+            <span><Icon filled name="post_add" /></span>
+            <div><strong>전시 게시물 만들기</strong><p>입력하는 내용은 오른쪽 전시 카드에 바로 반영됩니다.</p></div>
+            <AutosaveStatus phase={projectAutosave.phase} savedAt={projectAutosave.savedAt} />
+          </header>
+          <div className="submission-composer__body">
+            <fieldset className="submission-composer__section">
+              <legend><span>1</span> 표지 고르기</legend>
+              <div className="submission-cover-options" aria-label="고양이 표지 선택">
+                {PROJECT_COVER_OPTIONS.map((option) => (
+                  <button
+                    aria-label={`${option.label} 표지`}
+                    aria-pressed={coverImage === option.value}
+                    className={coverImage === option.value ? 'is-selected' : ''}
+                    key={option.value}
+                    onClick={() => update('coverImage', option.value)}
+                    type="button"
+                  >
+                    <img alt="" src={option.value} />
+                    <span>{option.label}</span>
+                    {coverImage === option.value ? <Icon filled name="check_circle" size="sm" /> : null}
+                  </button>
+                ))}
+              </div>
+              <Field
+                helpText="직접 만든 표지는 공개 HTTPS 이미지 주소를 붙여넣으세요. 이미지 파일은 별도로 저장하지 않아 비용을 늘리지 않습니다."
+                label="직접 이미지 링크 사용"
+                maxLength={2000}
+                onChange={(event) => update('coverImage', event.target.value)}
+                placeholder="https://example.com/cover.webp"
+                value={form.coverImage ?? ''}
+              />
+            </fieldset>
+
+            <fieldset className="submission-composer__section">
+              <legend><span>2</span> 작품 소개</legend>
+              <div className="form-grid compact">
+                <Field label="작품명" maxLength={60} onChange={(event) => update('title', event.target.value)} placeholder="작품명을 입력하세요" required value={form.title} />
+                <Field label="한 줄 소개" maxLength={120} onChange={(event) => update('pitch', event.target.value)} placeholder="누구의 무엇을 어떻게 바꾸는지 적어주세요" required value={form.pitch} />
+                <Textarea label="작품 이야기" maxLength={1500} onChange={(event) => update('description', event.target.value)} placeholder="문제, 핵심 기능, 사용 방법을 소개해주세요." required rows={6} showCount value={form.description} />
+              </div>
+            </fieldset>
+
+            <fieldset className="submission-composer__section">
+              <legend><span>3</span> 열어볼 수 있는 링크</legend>
+              <div className="grid two">
+                <Field helpText="배포된 웹앱, Figma, Notion 등" label="작품 링크" onChange={(event) => update('demoUrl', event.target.value)} placeholder="https://" type="url" value={form.demoUrl} />
+                <Field helpText="작품 링크와 GitHub 중 하나는 필수입니다." label="GitHub URL" onChange={(event) => update('githubUrl', event.target.value)} placeholder="https://github.com/" type="url" value={form.githubUrl} />
+              </div>
+              <Field helpText="쉼표로 구분하며 최대 6개까지 전시에 표시됩니다." label="기술·주제 태그" onChange={(event) => update('tags', event.target.value)} placeholder="Firebase, 교육, 실시간" value={form.tags} />
+            </fieldset>
+
+            <fieldset className="submission-composer__section">
+              <legend><span>4</span> 만든 사람의 기록</legend>
+              <Textarea label="제작 회고" maxLength={1200} onChange={(event) => update('retrospective', event.target.value)} placeholder="무엇을 배웠고 다음에는 무엇을 바꾸고 싶은지 남겨주세요." required rows={5} showCount value={form.retrospective} />
+            </fieldset>
           </div>
+          <footer className="submission-composer__actions">
+            <div><AutosaveStatus phase={projectAutosave.phase} savedAt={projectAutosave.savedAt} /><span>{projectReady ? '제출하면 주최자의 전시 목록에 즉시 도착합니다.' : '필수 내용과 작품 링크를 확인해주세요.'}</span></div>
+            <div className="button-row">
+              <Button disabled={projectConflict} leadingIcon="save" onClick={() => { void save(false) }} variant="text">초안 저장</Button>
+              <Button disabled={projectConflict || !projectReady} leadingIcon="publish" onClick={() => { void save(true) }} size="lg">
+                {submittedExisting ? '전시 게시물 업데이트' : '전시용 게시물 제출'}
+              </Button>
+            </div>
+          </footer>
         </Card>
         {existing ? (
           <ReviewThreadsPanel

@@ -408,6 +408,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
       path,
       {
         clientUpdatedAt: new Date().toISOString(),
+        coverImage: request.coverImage ?? '/assets/illustrations/cat-submission.webp',
         description: request.description,
         demoUrl: request.demoUrl ?? '',
         deviceId: DEVICE_ID,

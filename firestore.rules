@@ -196,7 +196,7 @@ service cloud.firestore {
           && draftId == request.auth.uid
           && request.resource.data.ownerParticipantId == request.auth.uid
           && request.resource.data.keys().hasOnly([
-            'clientMutationId', 'clientUpdatedAt', 'demoUrl', 'description',
+            'clientMutationId', 'clientUpdatedAt', 'coverImage', 'demoUrl', 'description',
             'deviceId', 'githubUrl', 'ownerParticipantId', 'pitch',
             'retrospective', 'revision', 'tags', 'title', 'updatedAt'
           ])
@@ -206,6 +206,8 @@ service cloud.firestore {
           && request.resource.data.pitch.size() <= 120
           && request.resource.data.description is string
           && request.resource.data.description.size() <= 1500
+          && request.resource.data.coverImage is string
+          && request.resource.data.coverImage.size() <= 2000
           && request.resource.data.retrospective is string
           && request.resource.data.retrospective.size() <= 1200
           && request.resource.data.demoUrl is string

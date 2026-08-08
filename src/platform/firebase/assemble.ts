@@ -347,6 +347,7 @@ function parseProjectDrafts(records: FirebaseDocumentRecord[]): FirebaseProjectD
   return records.map((record) => {
     const data = documentData(record)
     return {
+      coverImage: text(data.coverImage, '/assets/illustrations/cat-submission.webp'),
       description: text(data.description),
       demoUrl: text(data.demoUrl),
       githubUrl: text(data.githubUrl),
@@ -370,7 +371,7 @@ function parseSubmissions(
   const submitted = records.map((record) => submissionFromData(record, 'submitted'))
   const draftSubmissions = drafts.map((draft): Submission => ({
     id: `draft-${draft.participantId}`,
-    coverImage: '/assets/illustrations/cat-submission.webp',
+    coverImage: draft.coverImage,
     createdAt: draft.updatedAt,
     demoUrl: draft.demoUrl,
     description: draft.description,

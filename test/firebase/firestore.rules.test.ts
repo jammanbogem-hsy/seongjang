@@ -66,6 +66,7 @@ function projectDraft(ownerParticipantId: string) {
   return {
     clientMutationId: `project-${ownerParticipantId}`,
     clientUpdatedAt: '2026-08-05T02:00:00.000Z',
+    coverImage: '/assets/illustrations/cat-submission.webp',
     demoUrl: '',
     description: 'Private draft description',
     deviceId: 'rules-test-device',

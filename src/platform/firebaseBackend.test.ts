@@ -206,6 +206,37 @@ describe('Firebase production boundary', () => {
     expect(driver.writes.map((write) => write.data.revision)).toEqual([1, 2])
   })
 
+  it('keeps the selected exhibition cover in the Firebase project draft', async () => {
+    const driver = new FakeDriver()
+    const backend = createFirebaseEventBackend({
+      driver,
+      eventId: 'room-vibe26',
+      participantId: 'participant-01',
+      role: 'participant',
+    })
+
+    await backend.saveProjectDraft({
+      baseRevision: 0,
+      coverImage: '/assets/illustrations/cat-exhibition.webp',
+      description: '작품 설명',
+      demoUrl: 'https://example.com/demo',
+      githubUrl: '',
+      pitch: '한 줄 소개',
+      retrospective: '제작 회고',
+      tags: ['Firebase'],
+      title: '전시 게시물',
+    }).confirmation
+
+    expect(driver.writes[0]).toMatchObject({
+      path: 'events/room-vibe26/projectDrafts/participant-01',
+      data: {
+        coverImage: '/assets/illustrations/cat-exhibition.webp',
+        ownerParticipantId: 'participant-01',
+        revision: 1,
+      },
+    })
+  })
+
   it('routes private review mutations through the review callable', async () => {
     const driver = new FakeDriver()
     const backend = createFirebaseEventBackend({ driver, eventId: 'room-vibe26', role: 'organizer' })
@@ -317,6 +348,7 @@ describe('Firebase production boundary', () => {
       liveReactions: [],
       participants: [],
       projectDrafts: [{ id: 'participant-01', data: {
+        coverImage: '/assets/illustrations/cat-exhibition.webp',
         description: '제출 뒤에 고친 작품',
         ownerParticipantId: 'participant-01',
         title: '수정 중인 작품',
@@ -343,9 +375,9 @@ describe('Firebase production boundary', () => {
       acceptedBy: 'admin-user',
       status: 'accepted',
     })
-    expect(snapshot?.state.submissions.map(({ status, title }) => ({ status, title }))).toEqual([
-      { status: 'draft', title: '수정 중인 작품' },
-      { status: 'submitted', title: '제출한 작품' },
+    expect(snapshot?.state.submissions.map(({ coverImage, status, title }) => ({ coverImage, status, title }))).toEqual([
+      { coverImage: '/assets/illustrations/cat-exhibition.webp', status: 'draft', title: '수정 중인 작품' },
+      { coverImage: '/assets/illustrations/cat-submission.webp', status: 'submitted', title: '제출한 작품' },
     ])
   })
 

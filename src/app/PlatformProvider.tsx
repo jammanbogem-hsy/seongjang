@@ -440,6 +440,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       if (command.type === 'SUBMIT_PROJECT') {
         const write = backend.saveProjectDraft({
           baseRevision: command.input.baseRevision ?? 0,
+          coverImage: command.input.coverImage,
           title: command.input.title,
           pitch: command.input.pitch,
           description: command.input.description,
