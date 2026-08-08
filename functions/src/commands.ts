@@ -156,9 +156,6 @@ function assertAnswerWindow(
   if (live.get('activeSlideId') !== slideId && !withinPreviousSlideGrace) {
     throw new HttpsError('failed-precondition', '현재 진행 중인 질문에만 답변할 수 있습니다.')
   }
-  if (slide.get('answersRevealed') === true) {
-    throw new HttpsError('failed-precondition', '이미 공개된 단계의 답변은 수정할 수 없습니다.')
-  }
   if (!withinPreviousSlideGrace && live.get('timerStatus') === 'complete') {
     throw new HttpsError('deadline-exceeded', '답변 시간이 종료되었습니다.')
   }
@@ -1006,7 +1003,7 @@ async function saveAnswer(
       content,
       submittedContent: content,
       status: 'submitted',
-      visibility: 'owner',
+      visibility: slide.get('answersRevealed') === true ? 'revealed' : 'owner',
       createdAt: existingAnswer.get('createdAt') ?? now,
       updatedAt: now,
       submittedAt: now,

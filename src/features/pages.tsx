@@ -963,8 +963,8 @@ export function ParticipantLivePage() {
           <div className="live-audience-sidebar">
             <Card className="participant-side-card" padding="md" tone="subtle">
               <CatIllustration decorative size="md" variant={revealed ? 'comment' : timerView.status === 'complete' ? 'deadline' : 'focus'} />
-              <strong>{revealed ? '서로의 생각을 읽는 시간' : '지금은 나의 답에 집중'}</strong>
-              <p>{revealed ? '공개된 답변에 댓글로 맥락을 더해보세요.' : '제출 전까지 다른 사람의 답변은 보이지 않아요.'}</p>
+              <strong>{revealed ? '보고, 쓰고, 대화하는 시간' : '지금은 나의 답에 집중'}</strong>
+              <p>{revealed ? '공개된 답변을 읽고 댓글을 남기면서 내 답도 계속 작성할 수 있어요.' : '제출 전까지 다른 사람의 답변은 보이지 않아요.'}</p>
             </Card>
             <Card className="live-audience-card" padding="md">
               <header className="live-audience-card__header">
@@ -1073,8 +1073,16 @@ export function ParticipantLivePage() {
           </header>
           <div className="participant-stage-body">
             <p className="stage-prompt">{currentSlide.prompt}</p>
-            {!revealed ? (
-              <div className="stack">
+            {revealed ? (
+              <div className="reveal-intro reveal-intro--collecting">
+                <Chip icon="visibility" tone="success">답변 공개 중</Chip>
+                <div>
+                  <h2>{stageAnswers.length}개의 서로 다른 시선</h2>
+                  <p>공개된 답변을 보면서 내 답도 계속 작성할 수 있어요. 타이머가 끝날 때까지만 제출해주세요.</p>
+                </div>
+              </div>
+            ) : null}
+            <div className="stack">
                 {slideInputFields.length ? (
                   <div className="participant-slide-form-canvas">
                     {slideInputFields.map((field) => (
@@ -1139,7 +1147,9 @@ export function ParticipantLivePage() {
                 ) : null}
                 <div className="split mobile-stack">
                   <span className="chip-row">
-                    <Chip icon="lock" tone="info">공개 전 비공개</Chip>
+                    <Chip icon={revealed ? 'visibility' : 'lock'} tone={revealed ? 'success' : 'info'}>
+                      {revealed ? '공개 중 · 작성 가능' : '공개 전 비공개'}
+                    </Chip>
                     {ownAnswer?.status === 'submitted' ? <Chip icon="check_circle" tone="success">제출됨</Chip> : null}
                   </span>
                   <MascotAction compactOnly label="입력 내용은 자동 저장하고 있어요" variant="autosave">
@@ -1147,14 +1157,7 @@ export function ParticipantLivePage() {
                     <Button disabled={answerDraftConflict || !answerReady || timerView.status === 'complete'} leadingIcon="send" onClick={() => { void saveAnswer(true) }}>개인 답변 제출</Button>
                   </MascotAction>
                 </div>
-              </div>
-            ) : (
-              <div className="reveal-intro">
-                <Chip icon="visibility" tone="success">답변 공개됨</Chip>
-                <h2>{stageAnswers.length}개의 서로 다른 시선</h2>
-                <p>주최자가 이 단계의 답변을 공개했습니다. 댓글은 작성자의 닉네임과 함께 남습니다.</p>
-              </div>
-            )}
+            </div>
           </div>
         </section>
 
@@ -1671,6 +1674,9 @@ export function OrganizerControlPage() {
   const reviewAnswer = stageAnswers.find((answer) => answer.id === reviewAnswerId)
   const responseDetailAnswer = stageAnswers.find((answer) => answer.id === responseDetailAnswerId)
   const responseDetailRows = responseDetailAnswer ? parseStoredAnswerRows(responseDetailAnswer.content) : []
+  const responseDetailComments = responseDetailAnswer
+    ? state.comments.filter((comment) => comment.answerId === responseDetailAnswer.id)
+    : []
   const slideDraftValid = Boolean(
     slideDraft.eyebrow.trim()
     && slideDraft.title.trim()
@@ -2335,11 +2341,13 @@ export function OrganizerControlPage() {
               {stageAnswers.map((answer) => {
                 const participant = answerAuthor(answer, state.participants)
                 const storedRows = parseStoredAnswerRows(answer.content)
+                const answerCommentCount = state.comments.filter((comment) => comment.answerId === answer.id).length
                 return (
                   <article className="response-drawer-card" key={answer.id}>
                     <header>
                       <span className="avatar">{participant?.nickname.slice(0, 1) ?? '?'}</span>
                       <div><strong>{participant?.nickname ?? '참여자'}</strong><span>제출 당시 응답</span></div>
+                      <Chip icon="forum" tone={answerCommentCount ? 'primary' : 'neutral'}>{answerCommentCount}개</Chip>
                     </header>
                     {storedRows.length ? (
                       <dl>
@@ -2381,6 +2389,25 @@ export function OrganizerControlPage() {
                 </section>
               ))
             ) : <p>{responseDetailAnswer.content}</p>}
+            <section className="response-detail__comments">
+              <header>
+                <span><Icon filled name="forum" size="sm" /> 댓글</span>
+                <Chip tone={responseDetailComments.length ? 'primary' : 'neutral'}>{responseDetailComments.length}개</Chip>
+              </header>
+              {responseDetailComments.length ? (
+                <div className="response-detail__comment-list">
+                  {responseDetailComments.map((comment) => {
+                    const author = state.participants.find((participant) => participant.id === comment.participantId)
+                    return (
+                      <article key={comment.id}>
+                        <div><strong>{author?.nickname ?? '참여자'}</strong><time>{liveMessageTime(comment.createdAt)}</time></div>
+                        <p>{comment.body}</p>
+                      </article>
+                    )
+                  })}
+                </div>
+              ) : <p className="response-detail__empty-comments">아직 댓글이 없습니다.</p>}
+            </section>
           </div>
         ) : null}
       </Dialog>
@@ -2396,7 +2423,7 @@ export function OrganizerControlPage() {
             >응답 {stageAnswerCount}개 공개</Button>
           </>
         )}
-        description="공개하는 즉시 모든 참여자 화면이 응답 함께 보기로 전환됩니다."
+        description="공개 후에도 현재 단계의 입력과 제출은 타이머가 끝날 때까지 계속됩니다."
         onClose={() => setRevealDialogOpen(false)}
         open={revealDialogOpen}
         size="sm"
@@ -2427,6 +2454,10 @@ export function OrganizerControlPage() {
             <span className={`reveal-confirmation__check${revealWithComments ? ' is-checked' : ''}`}><Icon name={revealWithComments ? 'check' : 'close'} size="sm" /></span>
             <span><strong>공개와 함께 댓글 열기</strong><small>참여자가 서로의 응답에 댓글을 남길 수 있어요.</small></span>
           </button>
+          <div className="reveal-confirmation__collecting">
+            <Icon name="edit_note" size="sm" />
+            <span><strong>응답은 계속 수합됩니다.</strong><small>공개는 보기 권한만 바꾸며 입력을 마감하지 않습니다.</small></span>
+          </div>
         </div>
       </Dialog>
       <Dialog

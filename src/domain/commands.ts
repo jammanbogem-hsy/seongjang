@@ -668,9 +668,6 @@ export function executePlatformCommand(
       if (!content || content.length > 1_200) {
         return error(state, 'INVALID_CONTENT', '답변은 1자 이상 1,200자 이하로 입력해주세요.')
       }
-      if (state.live.answersRevealedBySlide[input.slideId]) {
-        return error(state, 'NOT_ALLOWED', '이미 공개된 단계의 답변은 수정할 수 없어요.')
-      }
       const existing = state.answers.find(
         (answer) => answer.participantId === input.participantId && answer.slideId === input.slideId,
       )

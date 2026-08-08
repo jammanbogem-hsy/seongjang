@@ -249,6 +249,22 @@ describe.skipIf(!runRulesTests)('Firestore security rules', () => {
     expect(snapshot.data()?.ownerParticipantId).toBe(participantA)
   })
 
+  it('continues accepting answer drafts after the organizer reveals the active responses', async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        doc(context.firestore(), `events/${eventId}/slides/stage-discover`),
+        { answersRevealed: true },
+        { merge: true },
+      )
+    })
+    const db = testEnvironment.authenticatedContext(participantA).firestore()
+
+    await assertSucceeds(setDoc(
+      doc(db, `events/${eventId}/answerDrafts/${participantA}__stage-discover`),
+      answerDraft(participantA),
+    ))
+  })
+
   it('keeps a short autosave grace window after the organizer advances the slide', async () => {
     const db = testEnvironment.authenticatedContext(participantA).firestore()
     const ownDraft = doc(db, `events/${eventId}/answerDrafts/${participantA}__stage-discover`)

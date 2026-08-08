@@ -36,7 +36,6 @@ service cloud.firestore {
     function answerWindowOpen(eventId, slideId) {
       let event = get(/databases/$(database)/documents/events/$(eventId)).data;
       let live = get(/databases/$(database)/documents/events/$(eventId)/live/state).data;
-      let slide = get(/databases/$(database)/documents/events/$(eventId)/slides/$(slideId)).data;
       let activeWindow = live.activeSlideId == slideId
         && live.timerStatus != 'complete'
         && (live.endsAt == null || request.time < live.endsAt);
@@ -45,9 +44,7 @@ service cloud.firestore {
         && request.time < live.draftGraceUntil;
       return event.lifecycle == 'live'
         && live.sessionStatus == 'live'
-        && (activeWindow || previousSlideGrace)
-        && slide.answersRevealed == false
-        ;
+        && (activeWindow || previousSlideGrace);
     }
 
     function validPrivateDraftTarget(eventId, data) {

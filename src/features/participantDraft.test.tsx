@@ -134,6 +134,34 @@ describe('participant answer draft state', () => {
     expect(screen.getByRole('timer', { name: '남은 시간 00:00' })).toHaveTextContent('00:00')
   })
 
+  it('keeps collecting answers after the organizer reveals the current responses', async () => {
+    const seed = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    const slide = seed.slides[seed.live.activeSlideIndex]
+    seed.live.answersRevealedBySlide[slide.id] = true
+    seed.live.commentsEnabledBySlide[slide.id] = true
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <ParticipantLivePage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    const answer = screen.getByLabelText('나의 개인 답변')
+    expect(answer).toBeEnabled()
+    expect(screen.getByText('공개 중 · 작성 가능')).toBeInTheDocument()
+    fireEvent.change(answer, { target: { value: '공개된 답변을 본 뒤 보완한 생각' } })
+    fireEvent.click(screen.getByRole('button', { name: '개인 답변 제출' }))
+    await act(async () => { await Promise.resolve() })
+
+    const persisted = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    expect(persisted.answers.find((candidate: { participantId: string; slideId: string }) => (
+      candidate.participantId === persisted.participants[0].id && candidate.slideId === slide.id
+    ))?.content).toBe('공개된 답변을 본 뒤 보완한 생각')
+  })
+
   it('autosaves a changed answer as a draft after the debounce window', async () => {
     vi.useFakeTimers()
     render(

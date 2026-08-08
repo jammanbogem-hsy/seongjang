@@ -59,7 +59,7 @@ describe('organizer and participant domain workflow', () => {
     expect(answer?.status).toBe('submitted')
 
     state = run(state, { type: 'SET_ANSWERS_REVEALED', slideId, revealed: true })
-    const lockedEdit = executePlatformCommand(
+    const continuedEdit = executePlatformCommand(
       state,
       {
         type: 'SAVE_ANSWER',
@@ -67,7 +67,9 @@ describe('organizer and participant domain workflow', () => {
       },
       env,
     )
-    expect(lockedEdit.result).toMatchObject({ ok: false, error: { code: 'NOT_ALLOWED' } })
+    expect(continuedEdit.result.ok).toBe(true)
+    state = continuedEdit.state
+    expect(state.answers.find((candidate) => candidate.id === answer!.id)?.content).toBe('공개 후 수정 시도')
 
     state = run(state, { type: 'SET_COMMENTS_ENABLED', slideId, enabled: true })
     state = run(state, {
@@ -96,7 +98,7 @@ describe('organizer and participant domain workflow', () => {
       (stage) => stage.key === `stage-${state.slides[3].order}`,
     )
     const publishedAnswer = publishedStage?.answers.find(
-      (candidate) => candidate.content === '다음 행사에서도 전체 흐름을 검증합니다.',
+      (candidate) => candidate.content === '공개 후 수정 시도',
     )
     expect(publishedAnswer).toBeDefined()
     expect(publishedAnswer?.comments.some((comment) => comment.body === '댓글 연결도 확인했습니다.')).toBe(true)

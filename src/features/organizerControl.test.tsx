@@ -415,6 +415,14 @@ describe('organizer live controls', () => {
       updatedAt: '2026-08-07T01:00:00.000Z',
       submittedAt: '2026-08-07T01:00:00.000Z',
     }]
+    seed.comments = [{
+      id: 'comment-sandbox',
+      participantId: seed.participants[1].id,
+      answerId: 'answer-sandbox',
+      body: '작품의 다음 단계가 궁금해요.',
+      createdAt: '2026-08-07T01:02:00.000Z',
+      updatedAt: '2026-08-07T01:02:00.000Z',
+    }]
     window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
 
     render(
@@ -427,8 +435,12 @@ describe('organizer live controls', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '응답 1개 보기' }))
     expect(screen.getByRole('complementary', { name: '현재 슬라이드 응답' })).toHaveTextContent('캣보드')
+    expect(screen.getByRole('complementary', { name: '현재 슬라이드 응답' })).toHaveTextContent('1개')
     fireEvent.click(screen.getByRole('button', { name: '상세 보기' }))
-    expect(screen.getByRole('dialog', { name: `${seed.participants[0].nickname}님의 응답` })).toHaveTextContent('기대 점수9')
+    const detailDialog = screen.getByRole('dialog', { name: `${seed.participants[0].nickname}님의 응답` })
+    expect(detailDialog).toHaveTextContent('기대 점수9')
+    expect(detailDialog).toHaveTextContent(seed.participants[1].nickname)
+    expect(detailDialog).toHaveTextContent('작품의 다음 단계가 궁금해요.')
   })
 
   it('reveals collected responses through one clear confirmation flow', async () => {
