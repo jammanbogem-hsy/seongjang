@@ -119,7 +119,10 @@ export interface LiveReaction {
 
 export interface LiveChatMessage {
   id: Identifier
-  participantId: Identifier
+  authorName: string
+  authorRole: ReviewAuthorRole
+  participantId: Identifier | null
+  replyToId: Identifier | null
   slideId: Identifier
   body: string
   createdAt: string
@@ -351,7 +354,8 @@ export interface SetLiveReactionInput {
 }
 
 export interface SendLiveChatMessageInput {
-  participantId: Identifier
+  participantId?: Identifier
+  replyToId?: Identifier | null
   slideId: Identifier
   body: string
 }

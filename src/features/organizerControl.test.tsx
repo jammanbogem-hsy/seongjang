@@ -236,6 +236,50 @@ describe('organizer live controls', () => {
     ])
   })
 
+  it('lets participants reply to each other while preserving the quoted message', async () => {
+    const seed = createSeedState()
+    const slideId = seed.slides[seed.live.activeSlideIndex].id
+    const firstParticipant = seed.participants[0]
+    const replyingParticipant = seed.participants[1]
+    seed.liveChatMessages = [{
+      id: 'peer-message-01',
+      authorName: firstParticipant.nickname,
+      authorRole: 'participant',
+      participantId: firstParticipant.id,
+      replyToId: null,
+      slideId,
+      body: '다른 분들은 어떻게 생각하세요?',
+      createdAt: '2026-08-05T01:02:00.000Z',
+    }]
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+    window.sessionStorage.setItem(PARTICIPANT_SESSION_KEY, replyingParticipant.id)
+    window.history.replaceState(null, '', '/events/room-vibe26/live')
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <ParticipantLivePage />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: `${firstParticipant.nickname}님에게 답장` }))
+    fireEvent.change(screen.getByRole('textbox', { name: '라이브 채팅' }), {
+      target: { value: '저도 같은 부분이 궁금했어요.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '라이브 채팅 보내기' }))
+    await act(async () => { await Promise.resolve() })
+
+    expect(screen.getByText('저도 같은 부분이 궁금했어요.')).toBeInTheDocument()
+    const stored = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    expect(stored.liveChatMessages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        participantId: replyingParticipant.id,
+        replyToId: 'peer-message-01',
+      }),
+    ]))
+  })
+
   it('shows the current slide reaction summary and live chat to the organizer', async () => {
     const seed = createSeedState()
     const slideId = seed.slides[seed.live.activeSlideIndex].id
@@ -248,7 +292,10 @@ describe('organizer live controls', () => {
     }]
     seed.liveChatMessages = [{
       id: 'chat-01',
+      authorName: seed.participants[0].nickname,
+      authorRole: 'participant',
       participantId: seed.participants[0].id,
+      replyToId: null,
       slideId,
       body: '지금 단계의 예시를 보고 싶어요.',
       createdAt: '2026-08-05T01:02:00.000Z',
@@ -263,9 +310,23 @@ describe('organizer live controls', () => {
       </RouterProvider>,
     )
 
-    expect(screen.getByRole('heading', { name: '청중 반응과 채팅' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '청중 패널 열기' }))
+    expect(screen.getByRole('complementary', { name: '청중 반응과 채팅' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '청중 패널' })).toBeInTheDocument()
     expect(screen.getByLabelText('질문 1개')).toHaveTextContent('1')
     expect(screen.getByText('지금 단계의 예시를 보고 싶어요.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: `${seed.participants[0].nickname}님에게 답장` }))
+    fireEvent.change(screen.getByRole('textbox', { name: '주최자 채팅' }), {
+      target: { value: '좋은 질문이에요. 지금 함께 볼게요.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '주최자 채팅 보내기' }))
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByText('좋은 질문이에요. 지금 함께 볼게요.')).toBeInTheDocument()
+    const storedAfterReply = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    expect(storedAfterReply.liveChatMessages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ authorRole: 'organizer', replyToId: 'chat-01' }),
+    ]))
 
     fireEvent.click(screen.getByRole('button', { name: `${seed.participants[0].nickname} 채팅 삭제` }))
     await act(async () => { await Promise.resolve() })

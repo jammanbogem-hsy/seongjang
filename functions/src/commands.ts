@@ -1070,22 +1070,38 @@ async function setLiveReaction(
 async function sendLiveChatMessage(
   eventId: string,
   command: UnknownRecord,
-  actor: EventActor & { role: 'participant' },
+  actor: EventActor,
 ): Promise<CommandSuccess> {
   const input = commandInput(command, '라이브 채팅')
   const slideId = safeDocumentId(requiredString(input, 'slideId', { max: 128 }), '슬라이드 ID')
   const body = requiredString(input, 'body', { min: 1, max: 280, label: '라이브 채팅' })
+  const rawReplyToId = optionalString(input, 'replyToId', 128)
+  const replyToId = rawReplyToId ? safeDocumentId(rawReplyToId, '답장 메시지 ID') : null
   const eventRef = db.doc(`events/${eventId}`)
   const liveRef = db.doc(eventPath(eventId, 'live/state'))
   const limitRef = db.doc(eventPath(eventId, `liveInteractionLimits/${slideId}__${actor.uid}`))
   const messageRef = db.collection(eventPath(eventId, 'liveChatMessages')).doc()
+  const participantRef = actor.role === 'participant'
+    ? db.doc(eventPath(eventId, `participants/${actor.uid}`))
+    : null
+  const replyRef = replyToId
+    ? db.doc(eventPath(eventId, `liveChatMessages/${replyToId}`))
+    : null
   const value = await db.runTransaction(async (transaction) => {
-    const [event, live, limit] = await Promise.all([
+    const [event, live, limit, participant, reply] = await Promise.all([
       transaction.get(eventRef),
       transaction.get(liveRef),
       transaction.get(limitRef),
+      participantRef ? transaction.get(participantRef) : Promise.resolve(null),
+      replyRef ? transaction.get(replyRef) : Promise.resolve(null),
     ])
     assertLiveInteractionWindow(event, live, slideId)
+    if (participant && !participant.exists) {
+      throw new HttpsError('not-found', '참여자 정보를 찾을 수 없습니다.')
+    }
+    if (reply && (!reply.exists || reply.get('slideId') !== slideId)) {
+      throw new HttpsError('not-found', '답장할 채팅 메시지를 찾을 수 없습니다.')
+    }
     const now = Timestamp.now()
     const lastSentAt = limit.get('lastSentAt')
     if (lastSentAt instanceof Timestamp && now.toMillis() - lastSentAt.toMillis() < MIN_LIVE_CHAT_INTERVAL_MS) {
@@ -1096,15 +1112,32 @@ async function sendLiveChatMessage(
       throw new HttpsError('resource-exhausted', '이 단계에서 보낼 수 있는 채팅 수에 도달했습니다.')
     }
     transaction.set(limitRef, { count: count + 1, lastSentAt: now, updatedAt: now }, { merge: true })
+    const authorRole = actor.role === 'participant' ? 'participant' : 'organizer'
+    const authorName = actor.role === 'participant'
+      ? String(participant?.get('nickname') ?? '참여자')
+      : actor.role === 'owner' ? '주최자' : '공동 주최자'
     transaction.create(messageRef, {
+      authorName,
+      authorRole,
       body,
       createdAt: now,
-      ownerParticipantId: actor.uid,
-      participantId: actor.uid,
+      ownerParticipantId: actor.role === 'participant' ? actor.uid : null,
+      ownerUid: actor.uid,
+      participantId: actor.role === 'participant' ? actor.uid : null,
+      replyToId,
       slideId,
       visibility: 'event',
     })
-    return { body, createdAt: now.toDate().toISOString(), id: messageRef.id, slideId }
+    return {
+      authorName,
+      authorRole,
+      body,
+      createdAt: now.toDate().toISOString(),
+      id: messageRef.id,
+      participantId: actor.role === 'participant' ? actor.uid : null,
+      replyToId,
+      slideId,
+    }
   })
   return success(value, '라이브 채팅을 보냈습니다.')
 }
@@ -1674,7 +1707,6 @@ async function updateSynthesis(eventId: string, command: UnknownRecord, actor: E
 const participantCommands = new Set([
   'ADD_COMMENT',
   'DELETE_COMMENT',
-  'SEND_LIVE_CHAT_MESSAGE',
   'SAVE_ANSWER',
   'SET_LIVE_REACTION',
   'SUBMIT_ANSWER',
@@ -1816,7 +1848,7 @@ async function executeCommand(request: CallableRequest<unknown>): Promise<Comman
         result = await setLiveReaction(eventId, command, actor as EventActor & { role: 'participant' })
         break
       case 'SEND_LIVE_CHAT_MESSAGE':
-        result = await sendLiveChatMessage(eventId, command, actor as EventActor & { role: 'participant' })
+        result = await sendLiveChatMessage(eventId, command, actor)
         break
       case 'DELETE_LIVE_CHAT_MESSAGE':
         result = await deleteLiveChatMessage(eventId, command, actor)

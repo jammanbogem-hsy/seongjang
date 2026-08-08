@@ -778,7 +778,10 @@ export function executePlatformCommand(
       if (state.room.lifecycle !== 'live') {
         return error(state, 'NOT_ALLOWED', '세션 진행 중에만 채팅을 보낼 수 있어요.')
       }
-      if (!state.participants.some(({ id }) => id === command.input.participantId)) {
+      const participant = command.input.participantId
+        ? state.participants.find(({ id }) => id === command.input.participantId)
+        : undefined
+      if (command.input.participantId && !participant) {
         return error(state, 'NOT_FOUND', '참가자 정보를 찾을 수 없어요.')
       }
       const activeSlide = state.slides[state.live.activeSlideIndex]
@@ -789,9 +792,18 @@ export function executePlatformCommand(
       if (!body || body.length > 280) {
         return error(state, 'INVALID_CONTENT', '라이브 채팅은 1자 이상 280자 이하로 입력해주세요.')
       }
+      const replyTo = command.input.replyToId
+        ? state.liveChatMessages.find(({ id }) => id === command.input.replyToId)
+        : undefined
+      if (command.input.replyToId && (!replyTo || replyTo.slideId !== activeSlide.id)) {
+        return error(state, 'NOT_FOUND', '답장할 채팅 메시지를 찾을 수 없어요.')
+      }
       const message: LiveChatMessage = {
         id: env.createId('live-chat'),
-        participantId: command.input.participantId,
+        authorName: participant?.nickname ?? '주최자',
+        authorRole: participant ? 'participant' : 'organizer',
+        participantId: participant?.id ?? null,
+        replyToId: replyTo?.id ?? null,
         slideId: activeSlide.id,
         body,
         createdAt: nowIso,

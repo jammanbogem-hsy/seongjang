@@ -175,11 +175,45 @@ describe('live controls', () => {
 
     expect(sent.result.ok).toBe(true)
     expect(sent.state.liveChatMessages).toEqual([
-      expect.objectContaining({ participantId: participant.id, slideId, body: '질문이 있어요' }),
+      expect.objectContaining({
+        authorName: participant.nickname,
+        authorRole: 'participant',
+        participantId: participant.id,
+        replyToId: null,
+        slideId,
+        body: '질문이 있어요',
+      }),
     ])
 
+    const replied = executePlatformCommand(sent.state, {
+      type: 'SEND_LIVE_CHAT_MESSAGE',
+      input: {
+        participantId: seed.participants[1].id,
+        replyToId: sent.state.liveChatMessages[0].id,
+        slideId,
+        body: '저도 궁금해요.',
+      },
+    }, env)
+    expect(replied.result.ok).toBe(true)
+    expect(replied.state.liveChatMessages[1]).toMatchObject({
+      authorRole: 'participant',
+      participantId: seed.participants[1].id,
+      replyToId: sent.state.liveChatMessages[0].id,
+    })
+
+    const organizerReply = executePlatformCommand(replied.state, {
+      type: 'SEND_LIVE_CHAT_MESSAGE',
+      input: { replyToId: sent.state.liveChatMessages[0].id, slideId, body: '곧 설명할게요.' },
+    }, env)
+    expect(organizerReply.state.liveChatMessages[2]).toMatchObject({
+      authorName: '주최자',
+      authorRole: 'organizer',
+      participantId: null,
+      replyToId: sent.state.liveChatMessages[0].id,
+    })
+
     const staleSlide = seed.slides.find((slide) => slide.id !== slideId)!
-    const blocked = executePlatformCommand(sent.state, {
+    const blocked = executePlatformCommand(organizerReply.state, {
       type: 'SEND_LIVE_CHAT_MESSAGE',
       input: { participantId: participant.id, slideId: staleSlide.id, body: '지난 질문' },
     }, env)

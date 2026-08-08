@@ -19,6 +19,7 @@ import {
 import type {
   Answer,
   CreateSlideInput,
+  LiveChatMessage,
   LiveReactionKind,
   Participant,
   ParticipantEntryMode,
@@ -94,6 +95,86 @@ function liveMessageTime(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function liveChatAuthor(message: LiveChatMessage, participants: Participant[]): string {
+  if (message.authorName?.trim()) return message.authorName
+  if (message.authorRole === 'organizer') return '주최자'
+  return participants.find(({ id }) => id === message.participantId)?.nickname ?? '참여자'
+}
+
+function LiveChatThread({
+  emptyMessage,
+  messages,
+  onDelete,
+  onReply,
+  participants,
+  viewerParticipantId,
+  viewerRole,
+}: {
+  emptyMessage: string
+  messages: LiveChatMessage[]
+  onDelete?: (message: LiveChatMessage) => void
+  onReply: (message: LiveChatMessage) => void
+  participants: Participant[]
+  viewerParticipantId?: string
+  viewerRole: 'organizer' | 'participant'
+}) {
+  const orderedMessages = [...messages].sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+  const latestMessageId = orderedMessages.at(-1)?.id
+  const threadRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const thread = threadRef.current
+    if (thread) thread.scrollTop = thread.scrollHeight
+  }, [latestMessageId])
+  if (!orderedMessages.length) {
+    return <div className="live-chat-thread__empty"><Icon name="forum" /><span>{emptyMessage}</span></div>
+  }
+  return (
+    <div aria-live="polite" className="live-chat-thread" ref={threadRef}>
+      {orderedMessages.map((message) => {
+        const author = liveChatAuthor(message, participants)
+        const repliedMessage = message.replyToId
+          ? orderedMessages.find(({ id }) => id === message.replyToId)
+          : undefined
+        const ownMessage = message.authorRole === 'organizer'
+          ? viewerRole === 'organizer'
+          : viewerRole === 'participant' && message.participantId === viewerParticipantId
+        return (
+          <article
+            className={`live-chat-thread__message live-chat-thread__message--${message.authorRole}${ownMessage ? ' is-mine' : ''}`}
+            key={message.id}
+          >
+            <header>
+              <span aria-hidden="true" className="avatar">{author.slice(0, 1)}</span>
+              <div>
+                <strong>{author}</strong>
+                {message.authorRole === 'organizer' ? <span className="live-chat-role">주최자</span> : null}
+              </div>
+              <time>{liveMessageTime(message.createdAt)}</time>
+            </header>
+            {repliedMessage ? (
+              <blockquote>
+                <strong>{liveChatAuthor(repliedMessage, participants)}</strong>
+                <span>{repliedMessage.body}</span>
+              </blockquote>
+            ) : null}
+            <p>{message.body}</p>
+            <footer>
+              <button aria-label={`${author}님에게 답장`} onClick={() => onReply(message)} type="button">
+                <Icon name="reply" size="sm" /> 답장
+              </button>
+              {onDelete ? (
+                <button aria-label={`${author} 채팅 삭제`} onClick={() => onDelete(message)} type="button">
+                  <Icon name="delete" size="sm" /> 삭제
+                </button>
+              ) : null}
+            </footer>
+          </article>
+        )
+      })}
+    </div>
+  )
 }
 
 const PROJECT_COVER_OPTIONS = [
@@ -593,6 +674,7 @@ export function ParticipantLivePage() {
   const [commentTarget, setCommentTarget] = useState<string | null>(null)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [liveChatDraft, setLiveChatDraft] = useState('')
+  const [liveChatReplyToId, setLiveChatReplyToId] = useState<string | null>(null)
   const [sendingLiveChat, setSendingLiveChat] = useState(false)
   const [commentDrafts, setCommentDrafts] = usePersistentDraft<Record<string, string>>(
     `vibecoding.comment-drafts.${currentParticipant?.id ?? 'guest'}`,
@@ -606,6 +688,7 @@ export function ParticipantLivePage() {
   const commentsEnabled = Boolean(state.live.commentsEnabledBySlide[currentSlide.id])
   const currentLiveReactions = state.liveReactions.filter((reaction) => reaction.slideId === currentSlide.id)
   const currentLiveMessages = state.liveChatMessages.filter((message) => message.slideId === currentSlide.id)
+  const liveChatReplyTo = currentLiveMessages.find((message) => message.id === liveChatReplyToId)
   const myLiveReaction = currentLiveReactions.find(
     (reaction) => reaction.participantId === currentParticipant?.id,
   )
@@ -625,6 +708,11 @@ export function ParticipantLivePage() {
   const ownCommentCount = state.comments.filter(
     (comment) => comment.participantId === currentParticipant?.id,
   ).length
+
+  useEffect(() => {
+    setLiveChatReplyToId(null)
+  }, [currentSlide.id])
+
   const ownAnswer = currentParticipant
     ? state.answers.find(
         (answer) => answer.participantId === currentParticipant.id && answer.slideId === currentSlide.id,
@@ -947,10 +1035,18 @@ export function ParticipantLivePage() {
     try {
       const result = await dispatchAsync({
         type: 'SEND_LIVE_CHAT_MESSAGE',
-        input: { participantId: participant.id, slideId: currentSlide.id, body },
+        input: {
+          participantId: participant.id,
+          replyToId: liveChatReplyTo?.id ?? null,
+          slideId: currentSlide.id,
+          body,
+        },
       })
       const ok = announceResult(result, notify)
-      if (ok) setLiveChatDraft('')
+      if (ok) {
+        setLiveChatDraft('')
+        setLiveChatReplyToId(null)
+      }
     } finally {
       setSendingLiveChat(false)
     }
@@ -986,25 +1082,27 @@ export function ParticipantLivePage() {
                   )
                 })}
               </div>
-              <div aria-live="polite" className="live-chat-feed">
-                {currentLiveMessages.slice(-6).map((message) => {
-                  const author = state.participants.find(({ id }) => id === message.participantId)
-                  return (
-                    <div className="live-chat-message" key={message.id}>
-                      <div><strong>{author?.nickname ?? '참여자'}</strong><time>{liveMessageTime(message.createdAt)}</time></div>
-                      <p>{message.body}</p>
-                    </div>
-                  )
-                })}
-                {!currentLiveMessages.length ? <p className="live-chat-empty">진행 중 궁금한 점을 남겨보세요.</p> : null}
-              </div>
+              <LiveChatThread
+                emptyMessage="첫 메시지를 남겨 대화를 시작해보세요."
+                messages={currentLiveMessages}
+                onReply={(message) => setLiveChatReplyToId(message.id)}
+                participants={state.participants}
+                viewerParticipantId={participant.id}
+                viewerRole="participant"
+              />
               <form className="live-chat-composer" onSubmit={sendLiveChat}>
+                {liveChatReplyTo ? (
+                  <div className="live-chat-replying">
+                    <span><Icon name="reply" size="sm" /><strong>{liveChatAuthor(liveChatReplyTo, state.participants)}</strong>님에게 답장</span>
+                    <IconButton icon="close" label="답장 취소" onClick={() => setLiveChatReplyToId(null)} />
+                  </div>
+                ) : null}
                 <Field
                   aria-label="라이브 채팅"
                   maxLength={280}
-                  label="채팅"
+                  label={liveChatReplyTo ? '답장' : '메시지'}
                   onChange={(event) => setLiveChatDraft(event.target.value)}
-                  placeholder="질문이나 반응을 입력하세요"
+                  placeholder={liveChatReplyTo ? '답장을 입력하세요' : '모두에게 메시지 보내기'}
                   value={liveChatDraft}
                 />
                 <Button
@@ -1618,6 +1716,10 @@ export function OrganizerControlPage() {
   const participantJoinUrl = `${window.location.origin}/join/${encodeURIComponent(participantRoomCode)}`
   const [reviewAnswerId, setReviewAnswerId] = useState<string | null>(null)
   const [responsePanelOpen, setResponsePanelOpen] = useState(false)
+  const [audiencePanelOpen, setAudiencePanelOpen] = useState(false)
+  const [organizerChatDraft, setOrganizerChatDraft] = useState('')
+  const [organizerChatReplyToId, setOrganizerChatReplyToId] = useState<string | null>(null)
+  const [sendingOrganizerChat, setSendingOrganizerChat] = useState(false)
   const [responseDetailAnswerId, setResponseDetailAnswerId] = useState<string | null>(null)
   const [revealDialogOpen, setRevealDialogOpen] = useState(false)
   const [revealWithComments, setRevealWithComments] = useState(true)
@@ -1666,6 +1768,7 @@ export function OrganizerControlPage() {
   const stageAnswers = state.answers.filter((answer) => answer.slideId === currentSlide.id && answer.status === 'submitted')
   const stageLiveReactions = state.liveReactions.filter((reaction) => reaction.slideId === currentSlide.id)
   const stageLiveMessages = state.liveChatMessages.filter((message) => message.slideId === currentSlide.id)
+  const organizerChatReplyTo = stageLiveMessages.find((message) => message.id === organizerChatReplyToId)
   const stageReactionCounts = Object.fromEntries(LIVE_REACTION_OPTIONS.map(({ kind }) => [
     kind,
     stageLiveReactions.filter((reaction) => reaction.kind === kind).length,
@@ -1728,6 +1831,8 @@ export function OrganizerControlPage() {
     setSlideEditorOpen(false)
     setSlideSandboxOpen(false)
     setResponsePanelOpen(false)
+    setAudiencePanelOpen(false)
+    setOrganizerChatReplyToId(null)
     setResponseDetailAnswerId(null)
     setRevealDialogOpen(false)
   }, [currentSlide.id])
@@ -1754,10 +1859,11 @@ export function OrganizerControlPage() {
     const nextIds = new Set(currentMessages.map((message) => message.id))
     const knownIds = knownLiveChatIdsRef.current
     if (knownIds) {
-      const received = currentMessages.filter((message) => !knownIds.has(message.id))
+      const received = currentMessages.filter(
+        (message) => !knownIds.has(message.id) && message.authorRole !== 'organizer',
+      )
       if (received.length === 1) {
-        const author = state.participants.find(({ id }) => id === received[0].participantId)
-        notify(`${author?.nickname ?? '참여자'}님의 라이브 채팅이 도착했습니다.`)
+        notify(`${liveChatAuthor(received[0], state.participants)}님의 라이브 채팅이 도착했습니다.`)
       } else if (received.length > 1) {
         notify(`라이브 채팅 ${received.length}개가 도착했습니다.`)
       }
@@ -1938,6 +2044,30 @@ export function OrganizerControlPage() {
     }
   }
 
+  async function sendOrganizerChat(event: FormEvent) {
+    event.preventDefault()
+    const body = organizerChatDraft.trim()
+    if (!body || sendingOrganizerChat) return
+    setSendingOrganizerChat(true)
+    try {
+      const result = await dispatchAsync({
+        type: 'SEND_LIVE_CHAT_MESSAGE',
+        input: {
+          replyToId: organizerChatReplyTo?.id ?? null,
+          slideId: currentSlide.id,
+          body,
+        },
+      })
+      const ok = announceResult(result, notify)
+      if (ok) {
+        setOrganizerChatDraft('')
+        setOrganizerChatReplyToId(null)
+      }
+    } finally {
+      setSendingOrganizerChat(false)
+    }
+  }
+
   async function applyTimerDuration(minutes = Number(durationMinutes)) {
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
       notify('타이머는 1분에서 180분 사이의 정수로 입력해주세요.', 'danger')
@@ -2056,50 +2186,25 @@ export function OrganizerControlPage() {
           <StatCard detail="모두 개인 작품" icon="rocket_launch" label="최종 제출" trend={`${state.participants.length - submittedCount}명 남음`} trendTone="warning" value={`${submittedCount}개`} />
         </div>
 
-        <Card className="live-audience-monitor" padding="md">
-          <header className="live-audience-monitor__header">
-            <div>
-              <span className="eyebrow">LIVE AUDIENCE</span>
-              <h2>청중 반응과 채팅</h2>
-            </div>
-            <div className="chip-row">
-              <Chip icon="touch_app" tone="primary">반응 {stageLiveReactions.length}</Chip>
-              <Chip icon="chat" tone="success">채팅 {stageLiveMessages.length}</Chip>
-            </div>
-          </header>
-          <div className="live-audience-monitor__body">
-            <div aria-label="현재 단계 반응 집계" className="live-reaction-summary">
-              {LIVE_REACTION_OPTIONS.map((option) => (
-                <div className="live-reaction-summary__item" key={option.kind}>
-                  <span><Icon filled name={option.icon} /><strong>{option.label}</strong></span>
-                  <output aria-label={`${option.label} ${stageReactionCounts[option.kind]}개`}>{stageReactionCounts[option.kind]}</output>
-                </div>
-              ))}
-            </div>
-            <div aria-live="polite" className="organizer-live-chat">
-              {stageLiveMessages.slice(-8).map((message) => {
-                const author = state.participants.find(({ id }) => id === message.participantId)
-                return (
-                  <article className="organizer-live-chat__message" key={message.id}>
-                    <span className="avatar">{author?.nickname.slice(0, 1) ?? '?'}</span>
-                    <div>
-                      <header><strong>{author?.nickname ?? '참여자'}</strong><time>{liveMessageTime(message.createdAt)}</time></header>
-                      <p>{message.body}</p>
-                    </div>
-                    <IconButton
-                      icon="delete"
-                      label={`${author?.nickname ?? '참여자'} 채팅 삭제`}
-                      onClick={() => run({ type: 'DELETE_LIVE_CHAT_MESSAGE', input: { messageId: message.id } })}
-                    />
-                  </article>
-                )
-              })}
-              {!stageLiveMessages.length ? (
-                <div className="organizer-live-chat__empty"><Icon name="forum" /><span>참여자의 라이브 채팅이 여기에 표시됩니다.</span></div>
-              ) : null}
-            </div>
+        <section aria-label="청중 소통 현황" className="audience-panel-launcher">
+          <div className="audience-panel-launcher__label">
+            <span><Icon filled name="forum" /></span>
+            <div><strong>청중 패널</strong><p>반응을 확인하고 실시간 대화를 이어가세요.</p></div>
           </div>
-        </Card>
+          <div className="audience-panel-launcher__actions">
+            <Chip icon="touch_app" tone="primary">반응 {stageLiveReactions.length}</Chip>
+            <Chip icon="chat" tone="success">채팅 {stageLiveMessages.length}</Chip>
+            <Button
+              leadingIcon="right_panel_open"
+              onClick={() => {
+                setResponsePanelOpen(false)
+                setAudiencePanelOpen(true)
+              }}
+              size="lg"
+              variant="tonal"
+            >청중 패널 열기</Button>
+          </div>
+        </section>
 
         <div className="live-console">
           <section className="stage-card" aria-live="polite">
@@ -2107,7 +2212,15 @@ export function OrganizerControlPage() {
               <span>{currentSlide.eyebrow}</span>
               <div className="stage-kicker__actions">
                 <Chip tone={revealed ? 'success' : 'info'}>{revealed ? '답변 공개됨' : '개인 작성 중'}</Chip>
-                <Button leadingIcon="view_sidebar" onClick={() => setResponsePanelOpen(true)} size="sm" variant={stageAnswerCount ? 'tonal' : 'outlined'}>응답 {stageAnswerCount}개 보기</Button>
+                <Button
+                  leadingIcon="view_sidebar"
+                  onClick={() => {
+                    setAudiencePanelOpen(false)
+                    setResponsePanelOpen(true)
+                  }}
+                  size="sm"
+                  variant={stageAnswerCount ? 'tonal' : 'outlined'}
+                >응답 {stageAnswerCount}개 보기</Button>
                 <Button className="stage-edit-button" leadingIcon="dashboard_customize" onClick={openSlideSandbox} size="sm" variant="tonal">샌드박스</Button>
                 <Button className="stage-edit-button" leadingIcon="edit" onClick={openSlideEditor} size="sm" variant="tonal">슬라이드 편집</Button>
               </div>
@@ -2325,6 +2438,72 @@ export function OrganizerControlPage() {
           />
         ) : null}
       </AdminLayout>
+      {audiencePanelOpen ? (
+        <div className="response-drawer-layer">
+          <button aria-label="청중 패널 닫기" className="response-drawer-scrim" onClick={() => setAudiencePanelOpen(false)} type="button" />
+          <aside aria-label="청중 반응과 채팅" className="audience-drawer">
+            <header className="audience-drawer__header">
+              <div>
+                <span className="eyebrow">LIVE AUDIENCE</span>
+                <h2>청중 패널</h2>
+                <p>{currentSlide.title}</p>
+              </div>
+              <IconButton icon="right_panel_close" label="청중 패널 닫기" onClick={() => setAudiencePanelOpen(false)} />
+            </header>
+            <section aria-labelledby="audience-reactions-title" className="audience-drawer__reactions">
+              <div className="audience-drawer__section-title">
+                <h3 id="audience-reactions-title">실시간 반응</h3>
+                <Chip icon="touch_app" tone="primary">{stageLiveReactions.length}개</Chip>
+              </div>
+              <div aria-label="현재 단계 반응 집계" className="live-reaction-summary">
+                {LIVE_REACTION_OPTIONS.map((option) => (
+                  <div className="live-reaction-summary__item" key={option.kind}>
+                    <span><Icon filled name={option.icon} /><strong>{option.label}</strong></span>
+                    <output aria-label={`${option.label} ${stageReactionCounts[option.kind]}개`}>{stageReactionCounts[option.kind]}</output>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section aria-labelledby="audience-chat-title" className="audience-drawer__chat">
+              <div className="audience-drawer__section-title">
+                <div><h3 id="audience-chat-title">전체 채팅</h3><p>주최자와 모든 참여자가 함께 보는 대화입니다.</p></div>
+                <Chip icon="chat" tone="success">{stageLiveMessages.length}개</Chip>
+              </div>
+              <LiveChatThread
+                emptyMessage="첫 메시지를 보내 참여자와 대화를 시작하세요."
+                messages={stageLiveMessages}
+                onDelete={(message) => run({ type: 'DELETE_LIVE_CHAT_MESSAGE', input: { messageId: message.id } })}
+                onReply={(message) => setOrganizerChatReplyToId(message.id)}
+                participants={state.participants}
+                viewerRole="organizer"
+              />
+            </section>
+            <form className="audience-drawer__composer live-chat-composer" onSubmit={sendOrganizerChat}>
+              {organizerChatReplyTo ? (
+                <div className="live-chat-replying">
+                  <span><Icon name="reply" size="sm" /><strong>{liveChatAuthor(organizerChatReplyTo, state.participants)}</strong>님에게 답장</span>
+                  <IconButton icon="close" label="답장 취소" onClick={() => setOrganizerChatReplyToId(null)} />
+                </div>
+              ) : null}
+              <Field
+                aria-label="주최자 채팅"
+                label={organizerChatReplyTo ? '답장' : '메시지'}
+                maxLength={280}
+                onChange={(event) => setOrganizerChatDraft(event.target.value)}
+                placeholder={organizerChatReplyTo ? '답장을 입력하세요' : '모든 참여자에게 메시지 보내기'}
+                value={organizerChatDraft}
+              />
+              <Button
+                aria-label="주최자 채팅 보내기"
+                disabled={!organizerChatDraft.trim()}
+                leadingIcon="send"
+                loading={sendingOrganizerChat}
+                type="submit"
+              >보내기</Button>
+            </form>
+          </aside>
+        </div>
+      ) : null}
       {responsePanelOpen ? (
         <div className="response-drawer-layer">
           <button aria-label="응답 패널 닫기" className="response-drawer-scrim" onClick={() => setResponsePanelOpen(false)} type="button" />

@@ -448,7 +448,12 @@ function parseLiveChatMessages(records: FirebaseDocumentRecord[]): LiveChatMessa
     const data = documentData(record)
     return {
       id: record.id,
-      participantId: text(data.participantId ?? data.ownerParticipantId),
+      authorName: text(data.authorName),
+      authorRole: data.authorRole === 'organizer' ? 'organizer' as const : 'participant' as const,
+      participantId: data.authorRole === 'organizer'
+        ? null
+        : text(data.participantId ?? data.ownerParticipantId) || null,
+      replyToId: text(data.replyToId) || null,
       slideId: text(data.slideId),
       body: text(data.body),
       createdAt: iso(data.createdAt),
