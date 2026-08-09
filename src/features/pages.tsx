@@ -2836,6 +2836,20 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
   const [reviewSubmissionId, setReviewSubmissionId] = useState<string | null>(null)
   const [exhibitionUpdating, setExhibitionUpdating] = useState(false)
   const snapshot = state.publishedSnapshot
+  const submittedProjects = state.submissions.filter((submission) => submission.status === 'submitted')
+  const publishedAtMs = Date.parse(snapshot?.publishedAt ?? '')
+  const exhibitionNeedsUpdate = state.exhibitionPublished && (
+    !snapshot
+    || !snapshot.data.exhibitionPublished
+    || snapshot.data.projects.length !== submittedProjects.length
+    || submittedProjects.some((submission) => (
+      !Number.isFinite(publishedAtMs) || Date.parse(submission.updatedAt) > publishedAtMs
+    ))
+  )
+  const pendingExhibitionCount = Math.max(
+    0,
+    submittedProjects.length - (snapshot?.data.projects.length ?? 0),
+  )
   const submissionCards = state.participants.flatMap((participant) => {
     const draft = state.submissions.find((submission) => (
       submission.participantId === participant.id && submission.status === 'draft'
@@ -2901,13 +2915,13 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
     setPinLoading(false)
   }
 
-  async function setExhibitionPublished() {
+  async function setExhibitionPublished(published: boolean) {
     if (exhibitionUpdating) return
     setExhibitionUpdating(true)
     try {
       announceResult(await dispatchAsync({
         type: 'SET_EXHIBITION_PUBLISHED',
-        published: !state.exhibitionPublished,
+        published,
       }), notify)
     } finally {
       setExhibitionUpdating(false)
@@ -2973,15 +2987,47 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
         {section === 'submissions' ? (
           <>
             <div className="grid three">
-              <StatCard icon="rocket_launch" label="제출 완료" value={`${state.submissions.filter((submission) => submission.status === 'submitted').length}명`} />
+              <StatCard icon="rocket_launch" label="제출 완료" value={`${submittedProjects.length}명`} />
               <StatCard icon="person" label="제출 단위" trend="팀 제출 없음" value="개인" />
               <StatCard icon="public" label="전시 상태" trend={state.exhibitionPublished ? '외부 공개' : '비공개'} value={state.exhibitionPublished ? 'ON' : 'OFF'} />
             </div>
             <div className="split mobile-stack">
-              <OutcomeNote>전시 상태를 바꾸면 새로운 공개 리비전이 만들어져 대시보드와 README도 같은 상태를 사용합니다.</OutcomeNote>
-              <Button disabled={exhibitionUpdating} leadingIcon={state.exhibitionPublished ? 'visibility_off' : 'visibility'} onClick={() => { void setExhibitionPublished() }} variant={state.exhibitionPublished ? 'outlined' : 'filled'}>
-                {exhibitionUpdating ? '전시 상태 반영 중…' : `전시 ${state.exhibitionPublished ? '회수' : '공개'}`}
-              </Button>
+              <OutcomeNote tone={exhibitionNeedsUpdate ? 'warm' : 'info'}>
+                {exhibitionNeedsUpdate
+                  ? pendingExhibitionCount > 0
+                    ? `${pendingExhibitionCount}개 작품이 아직 공개본에 반영되지 않았습니다. 전시 업데이트를 눌러 공개하세요.`
+                    : '제출 작품의 변경사항이 아직 공개본에 반영되지 않았습니다. 전시 업데이트를 눌러 공개하세요.'
+                  : '공개 리비전의 작품을 대시보드, 전시와 README에서 같은 상태로 사용합니다.'}
+              </OutcomeNote>
+              <div className="button-row">
+                {state.exhibitionPublished ? (
+                  <>
+                    <Button
+                      disabled={exhibitionUpdating}
+                      leadingIcon="sync"
+                      onClick={() => { void setExhibitionPublished(true) }}
+                    >
+                      {exhibitionUpdating ? '전시 반영 중…' : exhibitionNeedsUpdate ? '전시 업데이트 · 반영 필요' : '전시 업데이트'}
+                    </Button>
+                    <Button
+                      disabled={exhibitionUpdating}
+                      leadingIcon="visibility_off"
+                      onClick={() => { void setExhibitionPublished(false) }}
+                      variant="outlined"
+                    >
+                      공개 회수
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    disabled={exhibitionUpdating}
+                    leadingIcon="visibility"
+                    onClick={() => { void setExhibitionPublished(true) }}
+                  >
+                    {exhibitionUpdating ? '전시 반영 중…' : '전시 공개'}
+                  </Button>
+                )}
+              </div>
             </div>
             {submissionCards.length ? (
               <div className="exhibition-grid">

@@ -66,4 +66,37 @@ describe('public exhibition', () => {
     expect(within(dialog).getByText('제출 완료')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '검토 의견 남기기' })).toBeInTheDocument()
   })
+
+  it('shows when a submitted work is missing from the current public revision', () => {
+    const seed = createSeedState()
+    const submittedCount = seed.submissions.filter((submission) => submission.status === 'submitted').length
+    const staleSnapshot = {
+      ...seed.publishedSnapshot!,
+      data: {
+        ...seed.publishedSnapshot!.data,
+        metrics: {
+          ...seed.publishedSnapshot!.data.metrics,
+          projectCount: 0,
+        },
+        projects: [],
+      },
+    }
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify({
+      ...seed,
+      publishedSnapshot: staleSnapshot,
+    }))
+    window.history.replaceState(null, '', '/admin/events/room-vibe26/submissions')
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <OrganizerOperationsPage section="submissions" />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    expect(screen.getByText(`${submittedCount}개 작품이 아직 공개본에 반영되지 않았습니다. 전시 업데이트를 눌러 공개하세요.`)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '전시 업데이트 · 반영 필요' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '공개 회수' })).toBeInTheDocument()
+  })
 })
