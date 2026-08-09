@@ -185,7 +185,7 @@ export function ReviewThreadsPanel({
   return (
     <Card className="review-sheet" padding="lg" tone="subtle">
       <div className="review-sheet__intro">
-        <CatIllustration decorative size="sm" variant={mode === 'organizer' ? 'review' : 'comment'} />
+        <CatIllustration decorative size="sm" variant={mode === 'organizer' ? 'review' : 'reply'} />
         <SectionHeader
           description={mode === 'organizer'
             ? '자료 소유 참여자에게만 보이는 비공개 의견입니다.'
@@ -227,7 +227,7 @@ export function ReviewThreadsPanel({
         ))}
         {!threads.length ? (
           <div className="review-empty">
-            <CatIllustration decorative size="sm" variant="empty" />
+            <CatIllustration decorative size="sm" variant="reply" />
             <div><strong>아직 검토 댓글이 없어요.</strong><p>{mode === 'organizer' ? '첫 의견을 남겨 참여자의 다음 수정을 도와주세요.' : '새 의견이 도착하면 이곳에서 답글을 남길 수 있어요.'}</p></div>
           </div>
         ) : null}

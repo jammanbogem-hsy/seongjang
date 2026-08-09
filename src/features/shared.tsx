@@ -143,7 +143,7 @@ export function OrganizerShell({ children }: { children: ReactNode }) {
       <AppShell brandTo="/" mode="organizer" roomCode={roomCode}>
         <main className="page narrow" id="main-content">
           <Card className="empty-state identity-gate" padding="lg">
-            <CatIllustration decorative size="lg" variant="review" />
+            <CatIllustration decorative size="lg" variant="security" />
             <Chip icon="verified_user" tone="primary">Firebase 관리자 인증</Chip>
             <h1>주최자 권한을 확인해주세요.</h1>
             <p>초대받은 Google 계정으로 로그인하면 참여자 자료와 비공개 검토를 안전하게 불러옵니다.</p>

@@ -239,7 +239,7 @@ export function AdminInviteAcceptPage() {
     <PublicShell>
       <main className="public-main narrow-page">
         <Card padding="lg">
-          <CatIllustration size="lg" variant="welcome" />
+          <CatIllustration size="lg" variant="invite" />
           <SectionHeader
             description="초대받은 동일한 Google 계정으로 로그인하면 행사 관리자 권한이 연결됩니다."
             eyebrow="ADMIN INVITE"
@@ -445,7 +445,7 @@ export function OrganizerSessionsPage() {
           </button>
         ) : null}
         {!loading && !sessions.length && !canCreateSession ? (
-          <MascotCue description="초대받은 세션이 생기면 이곳에 표시됩니다." title="연결된 세션이 없습니다." variant="empty" />
+          <MascotCue description="초대받은 세션이 생기면 이곳에 표시됩니다." title="연결된 세션이 없습니다." variant="room-code" />
         ) : null}
         <div className="session-card-grid">
           {sessions.map((session) => {
@@ -627,7 +627,7 @@ export function JoinPage() {
             </section>
           </Card>
           <div className="join-art">
-            <CatIllustration loading="eager" size="hero" variant="lobby" />
+            <CatIllustration loading="eager" size="hero" variant="room-code" />
             <div className="join-art-copy">
               <StatusChip label={`${participantCount} / ${state.room.capacity}명 입장`} status="live" />
               <h2>같은 방, 같은 흐름</h2>
@@ -855,6 +855,7 @@ export function ParticipantLivePage() {
       <ParticipantShell>
         <main className="page narrow" id="main-content">
           <Card className="empty-state identity-gate" padding="lg">
+            <CatIllustration decorative size="lg" variant="break" />
             <span className="gateway-icon"><Icon filled name="task_alt" size="lg" /></span>
             <h1>세션이 종료되었습니다.</h1>
             <p>작성 기록은 주최자의 세션 카드에 안전하게 보관됩니다.</p>
@@ -909,7 +910,7 @@ export function ParticipantLivePage() {
         <main className="participant-waiting" id="main-content">
           <Card className="participant-waiting__card" padding="lg">
             <StatusChip label="입장 완료 · 실시간 연결" status="ready" />
-            <CatIllustration decorative size="md" variant="lobby" />
+            <CatIllustration decorative size="md" variant="presenter" />
             <div className="participant-waiting__copy">
               <h1>세션 시작을 기다리고 있어요</h1>
               <p>주최자가 시작하면 첫 번째 슬라이드가 자동으로 열립니다. 이 화면을 그대로 두세요.</p>
@@ -1058,7 +1059,7 @@ export function ParticipantLivePage() {
         aside={
           <div className="live-audience-sidebar">
             <Card className="participant-side-card" padding="md" tone="subtle">
-              <CatIllustration decorative size="md" variant={revealed ? 'comment' : timerView.status === 'complete' ? 'deadline' : 'focus'} />
+              <CatIllustration decorative size="md" variant={revealed ? 'reaction' : timerView.status === 'complete' ? 'deadline' : 'timer-start'} />
               <strong>{revealed ? '보고, 쓰고, 대화하는 시간' : '지금은 나의 답에 집중'}</strong>
               <p>{revealed ? '공개된 답변을 읽고 댓글을 남기면서 내 답도 계속 작성할 수 있어요.' : '제출 전까지 다른 사람의 답변은 보이지 않아요.'}</p>
             </Card>
@@ -2422,7 +2423,7 @@ export function OrganizerControlPage() {
               )
             })}
             {!stageAnswers.length ? (
-              <MascotCue description="참여자가 답변을 제출하면 인라인 검토 댓글을 남길 수 있어요." title="첫 답변을 기다리고 있어요" variant="empty" />
+              <MascotCue description="참여자가 답변을 제출하면 인라인 검토 댓글을 남길 수 있어요." title="첫 답변을 기다리고 있어요" variant="reply" />
             ) : null}
           </div>
         </Card>
@@ -2933,7 +2934,11 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
               <StatCard icon="history" label="최근 활동" trend="마지막 저장 기준" value={`${state.participants.filter((participant) => Date.now() - Date.parse(participant.lastSeenAt) < 15 * 60_000).length}명`} />
               <StatCard icon="assignment_turned_in" label="개인 제출" value={`${state.submissions.filter((submission) => submission.status === 'submitted').length}명`} />
             </div>
-            <OutcomeNote tone="warm"><strong>PIN 조회 정책</strong><br />재입장 지원이 필요한 경우에만 조회 사유를 입력하세요. 한 번에 한 명의 PIN을 30초 동안 확인할 수 있습니다.</OutcomeNote>
+            <MascotCue
+              description="재입장 지원이 필요한 경우에만 조회 사유를 입력하세요. 한 번에 한 명의 PIN을 30초 동안 확인할 수 있습니다."
+              title="PIN은 참여자 지원할 때만 확인해요"
+              variant="pin-help"
+            />
             <Card padding="lg">
               <div className="split mobile-stack operations-filter">
                 <Field leadingIcon="search" label="닉네임 검색" onChange={(event) => setQuery(event.target.value)} placeholder="참여자 찾기" value={query} />
@@ -2955,7 +2960,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
                   <MascotCue
                     description="닉네임 철자를 다시 확인하거나 검색어를 조금 줄여보세요."
                     title="찾는 참여자가 보이지 않아요"
-                    variant="lobby"
+                    variant="search"
                   />
                 ) : null}
               </div>
@@ -2995,7 +3000,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
               <MascotCue
                 description="참여자의 첫 번째 개인 작품이 제출되면 이곳에서 검토할 수 있어요."
                 title="아직 도착한 작품이 없어요"
-                variant="submission"
+                variant="upload"
               />
             )}
             {reviewSubmission ? (
@@ -3020,6 +3025,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
           <>
             <div className="grid two">
               <Card padding="lg">
+                <CatIllustration className="operations-card-mascot" decorative size="sm" variant="invite" />
                 <SectionHeader description="동일 이메일의 Google 계정으로 수락하는 흐름입니다." eyebrow="EMAIL INVITE" title="관리자 초대" titleAs="h2" />
                 {authRole === 'owner' ? <form className="form-grid" onSubmit={invite}>
                   <Field autoComplete="email" label="Google 이메일 주소" onChange={(event) => setInviteEmail(event.target.value)} placeholder="name@gmail.com" required type="email" value={inviteEmail} />
@@ -3059,7 +3065,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
               className="operations-mascot-cue"
               description="공개 리비전을 필요한 형식으로 내려받아 다음 행사와 다른 서비스에 이어가세요."
               title="행사 기록을 안전하게 옮겨드릴게요"
-              variant="submission"
+              variant="export"
             />
             <div className="grid four export-grid">
               {(['json', 'csv', 'markdown', 'readme'] as ExportFormat[]).map((format) => (
@@ -3396,7 +3402,7 @@ export function SynthesisPage() {
             </Card>
 
             <Card className="publish-card" padding="lg" tone="dark">
-              <CatIllustration decorative size="md" variant="exhibition" />
+              <CatIllustration decorative size="md" variant="dashboard" />
               <Chip tone="info">현재 공개 R{snapshot?.revision ?? 0}</Chip>
               <h3>수정본을 외부에 반영할까요?</h3>
               <p>발행 시 정제된 불변 스냅샷을 만들고 대시보드와 모든 내보내기가 이 리비전만 읽습니다.</p>
@@ -3441,7 +3447,7 @@ export function DashboardPage() {
             <Chip icon="person" tone="neutral">{data.organizerName}</Chip>
             <Chip icon="verified_user" tone="success">정제된 공개 데이터</Chip>
           </div>
-          <CatIllustration decorative size="lg" variant="exhibition" />
+          <CatIllustration decorative size="lg" variant="teamwork" />
         </section>
 
         <section className="section"><PublicMetrics metrics={data.metrics} /></section>
@@ -3484,7 +3490,7 @@ export function DashboardPage() {
 
         <section className="public-cta">
           <div><span className="eyebrow">INDIVIDUAL EXHIBITION</span><h2>{data.metrics.projectCount}개의 아이디어가 작품이 되었습니다.</h2><p>모든 결과물은 한 사람의 이름으로 제출되고, 다음 행사에서도 읽을 수 있는 README로 이어집니다.</p></div>
-          <MascotAction label="전시 고양이가 기다려요" variant="exhibition">
+          <MascotAction label="전시 고양이가 기다려요" variant="curator">
             <Button leadingIcon="museum" onClick={() => window.location.assign(`/exhibitions/${slug}`)} size="lg">작품 전시 보기</Button>
           </MascotAction>
         </section>
@@ -3588,7 +3594,7 @@ export function ExhibitionPage() {
             <p>모든 결과물은 개인 제출입니다. 단계별 기록과 제작 회고까지 다음 행사에 이어질 수 있는 형태로 남았습니다.</p>
             <div className="chip-row"><Chip icon="person" tone="primary">개인 작품 {projects.length}개</Chip><Chip icon="public" tone="success">전시 공개 중</Chip></div>
           </div>
-          <img alt="완성된 작품 전시를 안내하는 고양이" src="/assets/retro/retro-cat-collaboration.webp" />
+          <CatIllustration size="lg" variant="curator" />
         </section>
         <section className="section">
           <SectionHeader description="카드를 열어 데모, GitHub 링크와 제작자의 회고를 확인하세요." eyebrow="GALLERY" title="오늘 완성된 작품" />
@@ -3647,7 +3653,7 @@ function PublicEmpty({ title }: { title: string }) {
     <PublicShell>
       <main className="page narrow" id="main-content">
         <Card className="empty-state" padding="lg">
-          <CatIllustration size="lg" variant="exhibition" />
+          <CatIllustration size="lg" variant="curator" />
           <h1>{title}</h1>
           <p>주최자 콘솔에서 정리 세션을 발행하거나 전시를 공개해주세요.</p>
           <Button onClick={() => window.location.assign('/')}>홈으로 돌아가기</Button>
@@ -3662,7 +3668,7 @@ export function NotFoundPage() {
     <PublicShell>
       <main className="page narrow" id="main-content">
         <Card className="empty-state" padding="lg">
-          <CatIllustration size="lg" variant="lobby" />
+          <CatIllustration size="lg" variant="search" />
           <h1>이 페이지는 아직 준비 중이에요.</h1>
           <p>VibeCoding 홈에서 참여할 행사나 공개 전시를 찾아보세요.</p>
           <ResultLink to="/">홈으로 돌아가기</ResultLink>

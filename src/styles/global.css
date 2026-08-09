@@ -1595,6 +1595,11 @@ select:focus-visible,
 .mascot-cue strong { display: block; color: var(--ink); font-size: 14px; }
 .mascot-cue p { margin: 5px 0 0; color: var(--ink-soft); font-size: 12px; line-height: 1.55; }
 .operations-mascot-cue { margin: 0 0 18px auto; }
+.operations-card-mascot {
+  float: right;
+  margin: -14px -10px 6px 14px;
+  opacity: .88;
+}
 
 .autosave-status {
   display: inline-flex;
