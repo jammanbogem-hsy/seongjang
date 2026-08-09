@@ -2737,6 +2737,10 @@ select:focus-visible,
   gap: 8px;
 }
 
+.participant-audience-launcher {
+  margin-top: 0;
+}
+
 .audience-drawer {
   position: absolute;
   top: 0;
@@ -2810,6 +2814,14 @@ select:focus-visible,
 
 .audience-drawer__reactions .live-reaction-summary__item output {
   font-size: 20px;
+}
+
+.participant-audience-drawer .live-reaction-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.participant-audience-drawer .live-reaction-grid .ui-button {
+  width: 100%;
 }
 
 .audience-drawer__section-title {

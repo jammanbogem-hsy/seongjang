@@ -13,6 +13,32 @@ function SessionStartHarness() {
   )
 }
 
+function OrganizerChatHarness() {
+  const { currentSlide, dispatch } = usePlatform()
+  return (
+    <button
+      onClick={() => dispatch({
+        type: 'SEND_LIVE_CHAT_MESSAGE',
+        input: {
+          body: '지금 핵심 문장을 작성해주세요.',
+          replyToId: null,
+          slideId: currentSlide.id,
+        },
+      })}
+      type="button"
+    >주최자 메시지 전송</button>
+  )
+}
+
+function OrganizerSlideHarness() {
+  const { dispatch } = usePlatform()
+  return (
+    <button onClick={() => dispatch({ type: 'SET_ACTIVE_SLIDE', slideIndex: 1 })} type="button">
+      다음 슬라이드 전송
+    </button>
+  )
+}
+
 describe('organizer live controls', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/admin/events/room-vibe26/control')
@@ -218,6 +244,7 @@ describe('organizer live controls', () => {
       </RouterProvider>,
     )
 
+    fireEvent.click(screen.getByRole('button', { name: '반응·채팅 열기' }))
     fireEvent.click(screen.getByRole('button', { name: '공감 0' }))
     fireEvent.change(screen.getByRole('textbox', { name: '라이브 채팅' }), {
       target: { value: '이 질문을 조금 더 설명해주세요.' },
@@ -263,6 +290,7 @@ describe('organizer live controls', () => {
       </RouterProvider>,
     )
 
+    fireEvent.click(screen.getByRole('button', { name: '반응·채팅 열기' }))
     fireEvent.click(screen.getByRole('button', { name: `${firstParticipant.nickname}님에게 답장` }))
     fireEvent.change(screen.getByRole('textbox', { name: '라이브 채팅' }), {
       target: { value: '저도 같은 부분이 궁금했어요.' },
@@ -278,6 +306,57 @@ describe('organizer live controls', () => {
         replyToId: 'peer-message-01',
       }),
     ]))
+  })
+
+  it('alerts a participant to a new organizer message and opens it in the communication drawer', async () => {
+    const seed = createSeedState()
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+    window.sessionStorage.setItem(PARTICIPANT_SESSION_KEY, seed.participants[0].id)
+    window.history.replaceState(null, '', '/events/room-vibe26/live')
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <ParticipantLivePage />
+          <OrganizerChatHarness />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '주최자 메시지 전송' }))
+    await act(async () => { await Promise.resolve() })
+
+    expect(screen.getByText('새 메시지 1')).toBeInTheDocument()
+    expect(screen.getByText('주최자의 새 메시지가 도착했습니다.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '반응·채팅 열기' }))
+    const drawer = screen.getByRole('complementary', { name: '참여자 반응과 채팅' })
+    expect(drawer).toHaveTextContent('지금 핵심 문장을 작성해주세요.')
+    expect(drawer).toHaveTextContent('주최자')
+    expect(screen.queryByText('새 메시지 1')).not.toBeInTheDocument()
+  })
+
+  it('moves the participant to the organizer slide and resets the visible timer', async () => {
+    const seed = createSeedState()
+    seed.live.activeSlideIndex = 0
+    window.localStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(seed))
+    window.sessionStorage.setItem(PARTICIPANT_SESSION_KEY, seed.participants[0].id)
+    window.history.replaceState(null, '', '/events/room-vibe26/live')
+
+    render(
+      <RouterProvider>
+        <PlatformProvider>
+          <ParticipantLivePage />
+          <OrganizerSlideHarness />
+        </PlatformProvider>
+      </RouterProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '다음 슬라이드 전송' }))
+    await act(async () => { await Promise.resolve() })
+
+    expect(screen.getByRole('heading', { name: seed.slides[1].title })).toBeInTheDocument()
+    const expectedMinutes = String(Math.floor(seed.slides[1].durationSec / 60)).padStart(2, '0')
+    expect(screen.getByRole('timer', { name: `남은 시간 ${expectedMinutes}:00` })).toBeInTheDocument()
   })
 
   it('shows the current slide reaction summary and live chat to the organizer', async () => {
@@ -452,8 +531,9 @@ describe('organizer live controls', () => {
     expect(summaryWrapper).toHaveClass('participant-slide-field--wide')
     expect(scoreWrapper.style.left).toBe('')
     expect(scoreWrapper.style.top).toBe('')
-    fireEvent.click(screen.getByRole('button', { name: '임시 저장' }))
-    await act(async () => { await Promise.resolve() })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500)
+    })
 
     const persisted = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
     expect(persisted.answers[0].content).toBe('핵심 문장: 참여자가 바로 이해하는 입력 경험\n예상 시간: 15')

@@ -676,6 +676,10 @@ export function ParticipantLivePage() {
   const [liveChatDraft, setLiveChatDraft] = useState('')
   const [liveChatReplyToId, setLiveChatReplyToId] = useState<string | null>(null)
   const [sendingLiveChat, setSendingLiveChat] = useState(false)
+  const [participantAudienceOpen, setParticipantAudienceOpen] = useState(false)
+  const [participantUnreadChatCount, setParticipantUnreadChatCount] = useState(0)
+  const knownParticipantLiveChatIdsRef = useRef<Set<string>>(new Set())
+  const knownParticipantLiveChatSlideRef = useRef('')
   const [commentDrafts, setCommentDrafts] = usePersistentDraft<Record<string, string>>(
     `vibecoding.comment-drafts.${currentParticipant?.id ?? 'guest'}`,
     {},
@@ -699,19 +703,28 @@ export function ParticipantLivePage() {
   const stageAnswers = state.answers.filter(
     (answer) => answer.slideId === currentSlide.id && answer.status === 'submitted',
   )
-  const ownAnswerIds = new Set(state.answers
-    .filter((answer) => answer.participantId === currentParticipant?.id && answer.status === 'submitted')
-    .map((answer) => answer.id))
-  const organizerFeedbackCount = state.reviewThreads.filter(
-    (thread) => thread.targetType === 'answer' && ownAnswerIds.has(thread.targetId),
-  ).length
-  const ownCommentCount = state.comments.filter(
-    (comment) => comment.participantId === currentParticipant?.id,
-  ).length
-
   useEffect(() => {
     setLiveChatReplyToId(null)
+    setParticipantAudienceOpen(false)
+    setParticipantUnreadChatCount(0)
   }, [currentSlide.id])
+
+  useEffect(() => {
+    if (knownParticipantLiveChatSlideRef.current !== currentSlide.id) {
+      knownParticipantLiveChatSlideRef.current = currentSlide.id
+      knownParticipantLiveChatIdsRef.current = new Set(currentLiveMessages.map((message) => message.id))
+      return
+    }
+    const knownIds = knownParticipantLiveChatIdsRef.current
+    const incomingMessages = currentLiveMessages.filter((message) => (
+      !knownIds.has(message.id) && message.participantId !== currentParticipant?.id
+    ))
+    knownParticipantLiveChatIdsRef.current = new Set(currentLiveMessages.map((message) => message.id))
+    if (!incomingMessages.length || participantAudienceOpen) return
+    setParticipantUnreadChatCount((current) => current + incomingMessages.length)
+    const organizerMessage = incomingMessages.some((message) => message.authorRole === 'organizer')
+    notify(organizerMessage ? '주최자의 새 메시지가 도착했습니다.' : '새 채팅 메시지가 도착했습니다.')
+  }, [currentLiveMessages, currentParticipant?.id, currentSlide.id, notify, participantAudienceOpen])
 
   const ownAnswer = currentParticipant
     ? state.answers.find(
@@ -1056,67 +1069,6 @@ export function ParticipantLivePage() {
   return (
     <ParticipantShell>
       <ParticipantLayout
-        aside={
-          <div className="live-audience-sidebar">
-            <Card className="participant-side-card" padding="md" tone="subtle">
-              <CatIllustration decorative size="md" variant={revealed ? 'reaction' : timerView.status === 'complete' ? 'deadline' : 'timer-start'} />
-              <strong>{revealed ? '보고, 쓰고, 대화하는 시간' : '지금은 나의 답에 집중'}</strong>
-              <p>{revealed ? '공개된 답변을 읽고 댓글을 남기면서 내 답도 계속 작성할 수 있어요.' : '제출 전까지 다른 사람의 답변은 보이지 않아요.'}</p>
-            </Card>
-            <Card className="live-audience-card" padding="md">
-              <header className="live-audience-card__header">
-                <div><Icon filled name="sensors" size="sm" /><strong>라이브 참여</strong></div>
-                <Chip tone="success">실시간</Chip>
-              </header>
-              <div aria-label="라이브 반응" className="live-reaction-grid">
-                {LIVE_REACTION_OPTIONS.map((option) => {
-                  const selected = myLiveReaction?.kind === option.kind
-                  return (
-                    <Button
-                      aria-pressed={selected}
-                      key={option.kind}
-                      leadingIcon={option.icon}
-                      onClick={() => { void toggleLiveReaction(option.kind) }}
-                      size="sm"
-                      variant={selected ? 'tonal' : 'outlined'}
-                    >{option.label} {liveReactionCounts[option.kind]}</Button>
-                  )
-                })}
-              </div>
-              <LiveChatThread
-                emptyMessage="첫 메시지를 남겨 대화를 시작해보세요."
-                messages={currentLiveMessages}
-                onReply={(message) => setLiveChatReplyToId(message.id)}
-                participants={state.participants}
-                viewerParticipantId={participant.id}
-                viewerRole="participant"
-              />
-              <form className="live-chat-composer" onSubmit={sendLiveChat}>
-                {liveChatReplyTo ? (
-                  <div className="live-chat-replying">
-                    <span><Icon name="reply" size="sm" /><strong>{liveChatAuthor(liveChatReplyTo, state.participants)}</strong>님에게 답장</span>
-                    <IconButton icon="close" label="답장 취소" onClick={() => setLiveChatReplyToId(null)} />
-                  </div>
-                ) : null}
-                <Field
-                  aria-label="라이브 채팅"
-                  maxLength={280}
-                  label={liveChatReplyTo ? '답장' : '메시지'}
-                  onChange={(event) => setLiveChatDraft(event.target.value)}
-                  placeholder={liveChatReplyTo ? '답장을 입력하세요' : '모두에게 메시지 보내기'}
-                  value={liveChatDraft}
-                />
-                <Button
-                  aria-label="라이브 채팅 보내기"
-                  disabled={!liveChatDraft.trim()}
-                  loading={sendingLiveChat}
-                  leadingIcon="send"
-                  type="submit"
-                >보내기</Button>
-              </form>
-            </Card>
-          </div>
-        }
         description={currentSlide.helper}
         eyebrow={currentSlide.eyebrow}
         progress={{ current: currentSlide.order, total: state.slides.length, label: `${currentSlide.order} / ${state.slides.length} 단계 · 주최자와 동기화` }}
@@ -1131,7 +1083,7 @@ export function ParticipantLivePage() {
             <div>
               <span className="participant-timer__status"><span aria-hidden="true" className="live-dot" />{timerStatusLabel}</span>
               <strong>현재 단계 제한 시간</strong>
-              <p>{timerSupportingText}</p>
+              {timerView.status === 'running' ? null : <p>{timerSupportingText}</p>}
             </div>
           </div>
           <div
@@ -1154,20 +1106,33 @@ export function ParticipantLivePage() {
             <span style={{ width: `${timerProgressPercent}%` }} />
           </div>
         </section>
-        <Card className="session-connection-bar" padding="md" tone="subtle">
-          <div>
-            <StatusChip label="주최자 세션과 실시간 연결" status="live" />
-            <p>현재 질문에 답하면 주최자 콘솔로 전송되고, 공개 토론과 비공개 피드백은 이 세션에서 이어집니다.</p>
+        <section aria-label="반응과 채팅" className="audience-panel-launcher participant-audience-launcher">
+          <div className="audience-panel-launcher__label">
+            <span><Icon filled name="forum" size="md" /></span>
+            <div>
+              <strong>반응과 채팅</strong>
+              <p>주최자와 참여자에게 바로 이야기하세요.</p>
+            </div>
           </div>
-          <div className="chip-row">
-            <Chip icon="check_circle" tone="success">내 제출 {ownAnswerIds.size}개</Chip>
-            <Chip icon="rate_review" tone={organizerFeedbackCount ? 'warning' : 'neutral'}>주최자 피드백 {organizerFeedbackCount}개</Chip>
-            <Chip icon="forum" tone="neutral">내 댓글 {ownCommentCount}개</Chip>
+          <div className="audience-panel-launcher__actions">
+            <Chip icon="touch_app" tone="info">반응 {currentLiveReactions.length}</Chip>
+            <Chip icon="chat" tone={participantUnreadChatCount ? 'warning' : 'success'}>
+              {participantUnreadChatCount ? `새 메시지 ${participantUnreadChatCount}` : `채팅 ${currentLiveMessages.length}`}
+            </Chip>
+            <Button
+              aria-label="반응·채팅 열기"
+              leadingIcon="right_panel_open"
+              onClick={() => {
+                setParticipantAudienceOpen(true)
+                setParticipantUnreadChatCount(0)
+              }}
+              variant="tonal"
+            >열기</Button>
           </div>
-        </Card>
+        </section>
         <section aria-live="polite" className="participant-stage">
           <header className="participant-stage-head">
-            <span><span className="live-dot" /> LIVE QUESTION</span>
+            <span><span className="live-dot" /> 현재 질문</span>
             <strong>{currentSlide.order} / {state.slides.length} 단계</strong>
           </header>
           <div className="participant-stage-body">
@@ -1177,7 +1142,6 @@ export function ParticipantLivePage() {
                 <Chip icon="visibility" tone="success">답변 공개 중</Chip>
                 <div>
                   <h2>{stageAnswers.length}개의 서로 다른 시선</h2>
-                  <p>공개된 답변을 보면서 내 답도 계속 작성할 수 있어요. 타이머가 끝날 때까지만 제출해주세요.</p>
                 </div>
               </div>
             ) : null}
@@ -1252,7 +1216,6 @@ export function ParticipantLivePage() {
                     {ownAnswer?.status === 'submitted' ? <Chip icon="check_circle" tone="success">제출됨</Chip> : null}
                   </span>
                   <MascotAction compactOnly label="입력 내용은 자동 저장하고 있어요" variant="autosave">
-                    <Button disabled={answerDraftConflict || !answerReady || timerView.status === 'complete'} onClick={() => { void saveAnswer(false) }} variant="text">임시 저장</Button>
                     <Button disabled={answerDraftConflict || !answerReady || timerView.status === 'complete'} leadingIcon="send" onClick={() => { void saveAnswer(true) }}>개인 답변 제출</Button>
                   </MascotAction>
                 </div>
@@ -1369,6 +1332,84 @@ export function ParticipantLivePage() {
           </div>
         )}
       </ParticipantLayout>
+      {participantAudienceOpen ? (
+        <div className="response-drawer-layer">
+          <button
+            aria-label="반응과 채팅 닫기"
+            className="response-drawer-scrim"
+            onClick={() => setParticipantAudienceOpen(false)}
+            type="button"
+          />
+          <aside aria-label="참여자 반응과 채팅" className="audience-drawer participant-audience-drawer">
+            <header className="audience-drawer__header">
+              <div>
+                <span className="page-eyebrow">LIVE</span>
+                <h2>반응과 채팅</h2>
+                <p>{currentSlide.title}</p>
+              </div>
+              <IconButton icon="close" label="반응과 채팅 닫기" onClick={() => setParticipantAudienceOpen(false)} />
+            </header>
+            <section aria-label="라이브 반응" className="audience-drawer__reactions">
+              <div className="audience-drawer__section-title">
+                <strong>빠른 반응</strong>
+                <Chip tone="info">{currentLiveReactions.length}개</Chip>
+              </div>
+              <div className="live-reaction-grid">
+                {LIVE_REACTION_OPTIONS.map((option) => {
+                  const selected = myLiveReaction?.kind === option.kind
+                  return (
+                    <Button
+                      aria-pressed={selected}
+                      key={option.kind}
+                      leadingIcon={option.icon}
+                      onClick={() => { void toggleLiveReaction(option.kind) }}
+                      size="sm"
+                      variant={selected ? 'tonal' : 'outlined'}
+                    >{option.label} {liveReactionCounts[option.kind]}</Button>
+                  )
+                })}
+              </div>
+            </section>
+            <section className="audience-drawer__chat">
+              <div className="audience-drawer__section-title">
+                <strong>대화</strong>
+                <Chip tone="success">{currentLiveMessages.length}개</Chip>
+              </div>
+              <LiveChatThread
+                emptyMessage="첫 메시지를 남겨 대화를 시작해보세요."
+                messages={currentLiveMessages}
+                onReply={(message) => setLiveChatReplyToId(message.id)}
+                participants={state.participants}
+                viewerParticipantId={participant.id}
+                viewerRole="participant"
+              />
+            </section>
+            <form className="audience-drawer__composer live-chat-composer" onSubmit={sendLiveChat}>
+              {liveChatReplyTo ? (
+                <div className="live-chat-replying">
+                  <span><Icon name="reply" size="sm" /><strong>{liveChatAuthor(liveChatReplyTo, state.participants)}</strong>님에게 답장</span>
+                  <IconButton icon="close" label="답장 취소" onClick={() => setLiveChatReplyToId(null)} />
+                </div>
+              ) : null}
+              <Field
+                aria-label="라이브 채팅"
+                maxLength={280}
+                label={liveChatReplyTo ? '답장' : '메시지'}
+                onChange={(event) => setLiveChatDraft(event.target.value)}
+                placeholder={liveChatReplyTo ? '답장을 입력하세요' : '모두에게 메시지 보내기'}
+                value={liveChatDraft}
+              />
+              <Button
+                aria-label="라이브 채팅 보내기"
+                disabled={!liveChatDraft.trim()}
+                loading={sendingLiveChat}
+                leadingIcon="send"
+                type="submit"
+              >보내기</Button>
+            </form>
+          </aside>
+        </div>
+      ) : null}
       <Dialog
         actions={(
           <>

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PlatformProvider, usePlatform } from '../app/PlatformProvider'
 import { RouterProvider } from '../app/router'
@@ -61,6 +61,7 @@ describe('participant answer draft state', () => {
   })
 
   it('preserves text across active slide changes and uses the canonical saved value', async () => {
+    vi.useFakeTimers()
     render(
       <RouterProvider>
         <PlatformProvider>
@@ -78,11 +79,16 @@ describe('participant answer draft state', () => {
 
     expect(screen.getByLabelText('나의 개인 답변')).toHaveValue('  아직 제출하지 않은 중요한 초안  ')
 
-    fireEvent.click(screen.getByRole('button', { name: '임시 저장' }))
-
-    await waitFor(() => {
-      expect(screen.getByLabelText('나의 개인 답변')).toHaveValue('아직 제출하지 않은 중요한 초안')
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500)
     })
+    const persisted = JSON.parse(window.localStorage.getItem(PLATFORM_STORAGE_KEY)!)
+    const saved = persisted.answers.find(
+      (answer: { participantId: string; slideId: string }) => (
+        answer.participantId === persisted.participants[0].id && answer.slideId === persisted.slides[3].id
+      ),
+    )
+    expect(saved?.content).toBe('아직 제출하지 않은 중요한 초안')
   })
 
   it('keeps the organizer timer prominent and exposes its paused state', () => {
@@ -128,7 +134,7 @@ describe('participant answer draft state', () => {
     )
 
     expect(screen.getByLabelText('나의 개인 답변')).toBeDisabled()
-    expect(screen.getByRole('button', { name: '임시 저장' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '임시 저장' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '개인 답변 제출' })).toBeDisabled()
     expect(screen.getByText('시간 종료')).toBeInTheDocument()
     expect(screen.getByRole('timer', { name: '남은 시간 00:00' })).toHaveTextContent('00:00')
