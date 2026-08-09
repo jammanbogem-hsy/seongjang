@@ -2832,6 +2832,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
   const [revealedPin, setRevealedPin] = useState('')
   const [pinLoading, setPinLoading] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [viewSubmissionId, setViewSubmissionId] = useState<string | null>(null)
   const [reviewSubmissionId, setReviewSubmissionId] = useState<string | null>(null)
   const [exhibitionUpdating, setExhibitionUpdating] = useState(false)
   const snapshot = state.publishedSnapshot
@@ -2842,9 +2843,10 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
     const submitted = state.submissions.find((submission) => (
       submission.participantId === participant.id && submission.status === 'submitted'
     ))
-    const project = draft ?? submitted
+    const project = submitted ?? draft
     return project ? [{ participant, project, targetId: participant.id }] : []
   })
+  const viewSubmission = submissionCards.find((item) => item.targetId === viewSubmissionId)
   const reviewSubmission = submissionCards.find((item) => item.targetId === reviewSubmissionId)
 
   useEffect(() => {
@@ -2989,6 +2991,7 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
                     <ProjectCard
                       key={targetId}
                       maker={participant.nickname}
+                      onOpen={() => setViewSubmissionId(targetId)}
                       onReview={() => setReviewSubmissionId((current) => current === targetId ? null : targetId)}
                       project={project}
                       reviewCount={reviewCount}
@@ -3085,6 +3088,56 @@ export function OrganizerOperationsPage({ section }: { section: OperationsSectio
           </>
         ) : null}
       </AdminLayout>
+
+      <Dialog
+        actions={viewSubmission ? (
+          <>
+            <Button onClick={() => setViewSubmissionId(null)} variant="text">닫기</Button>
+            {viewSubmission.project.githubUrl ? (
+              <Button
+                leadingIcon="code"
+                onClick={() => window.open(viewSubmission.project.githubUrl, '_blank', 'noopener,noreferrer')}
+                variant="outlined"
+              >
+                GitHub
+              </Button>
+            ) : null}
+            {viewSubmission.project.demoUrl ? (
+              <Button
+                leadingIcon="arrow_outward"
+                onClick={() => window.open(viewSubmission.project.demoUrl, '_blank', 'noopener,noreferrer')}
+                variant="outlined"
+              >
+                데모 열기
+              </Button>
+            ) : null}
+            <Button
+              leadingIcon="rate_review"
+              onClick={() => {
+                setViewSubmissionId(null)
+                setReviewSubmissionId(viewSubmission.targetId)
+              }}
+            >
+              검토 의견 남기기
+            </Button>
+          </>
+        ) : undefined}
+        description={viewSubmission
+          ? `${viewSubmission.participant.nickname}님의 개인 작품 · ${viewSubmission.project.status === 'submitted' ? '제출 완료' : '작성 중 초안'}`
+          : undefined}
+        onClose={() => setViewSubmissionId(null)}
+        open={Boolean(viewSubmission)}
+        size="lg"
+        title={viewSubmission?.project.title ?? '작품 상세'}
+      >
+        {viewSubmission ? (
+          <ProjectDetail
+            maker={viewSubmission.participant.nickname}
+            project={viewSubmission.project}
+            status={viewSubmission.project.status}
+          />
+        ) : null}
+      </Dialog>
 
       <Dialog
         actions={
@@ -3530,17 +3583,8 @@ function ProjectCard({
 }) {
   return (
     <article
-      aria-label={onOpen ? `${project.title} 상세 보기` : undefined}
       className={`card project-card interactive${onOpen ? ' project-card--openable' : ''}`}
       onClick={onOpen}
-      onKeyDown={onOpen ? (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onOpen()
-        }
-      } : undefined}
-      role={onOpen ? 'button' : undefined}
-      tabIndex={onOpen ? 0 : undefined}
     >
       <div className="project-cover"><img alt="" src={project.coverImage} /></div>
       <div className="project-content">
@@ -3550,9 +3594,29 @@ function ProjectCard({
         <div className="chip-row">{project.tags.slice(0, 3).map((tag) => <Chip key={tag}>{tag}</Chip>)}</div>
         {onOpen || onReview ? (
           <div className="project-card__actions">
-            {onOpen ? <span className="project-card__open"><Icon name="open_in_full" size="sm" /> 작품 상세 보기</span> : null}
+            {onOpen ? (
+              <button
+                aria-label={`${project.title} 작품 보기`}
+                className="project-card__open"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onOpen()
+                }}
+                type="button"
+              >
+                <Icon name="open_in_full" size="sm" /> 작품 보기
+              </button>
+            ) : null}
             {onReview ? (
-              <Button leadingIcon="rate_review" onClick={onReview} size="sm" variant="tonal">
+              <Button
+                leadingIcon="rate_review"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onReview()
+                }}
+                size="sm"
+                variant="tonal"
+              >
                 검토 {reviewCount ? reviewCount : ''}
               </Button>
             ) : null}
@@ -3560,6 +3624,51 @@ function ProjectCard({
         ) : null}
       </div>
     </article>
+  )
+}
+
+function ProjectDetail({
+  project,
+  maker,
+  status,
+}: {
+  project: PublicProject | Submission
+  maker: string
+  status?: Submission['status']
+}) {
+  return (
+    <div className="project-detail">
+      <div className="project-detail__visual">
+        <img alt={`${project.title} 대표 이미지`} src={project.coverImage} />
+        <div className="project-detail__availability">
+          <Chip icon="person" tone="primary">{maker}의 개인 작품</Chip>
+          {status ? (
+            <Chip icon={status === 'submitted' ? 'task_alt' : 'edit_note'} tone={status === 'submitted' ? 'success' : 'warning'}>
+              {status === 'submitted' ? '제출 완료' : '작성 중 초안'}
+            </Chip>
+          ) : null}
+          {project.demoUrl ? <Chip icon="play_circle" tone="success">실행 가능한 데모</Chip> : null}
+          {project.githubUrl ? <Chip icon="code" tone="neutral">소스 공개</Chip> : null}
+        </div>
+      </div>
+      <div className="project-detail__story">
+        <p className="project-pitch">{project.pitch || '한 줄 소개가 아직 없습니다.'}</p>
+        <div className="project-feature-list">
+          <section>
+            <span className="project-feature-list__icon"><Icon filled name="lightbulb" /></span>
+            <div><h3>작품의 핵심</h3><p>{project.description || '상세 설명이 아직 없습니다.'}</p></div>
+          </section>
+          <section>
+            <span className="project-feature-list__icon"><Icon name="history_edu" /></span>
+            <div><h3>만든 사람의 기록</h3><blockquote>{project.retrospective || '제작 회고가 아직 없습니다.'}</blockquote></div>
+          </section>
+          <section>
+            <span className="project-feature-list__icon"><Icon name="sell" /></span>
+            <div><h3>작품의 특징</h3><div className="chip-row">{project.tags.length ? project.tags.map((tag) => <Chip key={tag}>{tag}</Chip>) : <Chip>개인 프로젝트</Chip>}</div></div>
+          </section>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -3614,35 +3723,7 @@ export function ExhibitionPage() {
         size="lg"
         title={selected?.title ?? '작품 상세'}
       >
-        {selected ? (
-          <div className="project-detail">
-            <div className="project-detail__visual">
-              <img alt={`${selected.title} 대표 이미지`} src={selected.coverImage} />
-              <div className="project-detail__availability">
-                <Chip icon="person" tone="primary">{selected.maker.name}의 개인 작품</Chip>
-                {selected.demoUrl ? <Chip icon="play_circle" tone="success">실행 가능한 데모</Chip> : null}
-                {selected.githubUrl ? <Chip icon="code" tone="neutral">소스 공개</Chip> : null}
-              </div>
-            </div>
-            <div className="project-detail__story">
-              <p className="project-pitch">{selected.pitch}</p>
-              <div className="project-feature-list">
-                <section>
-                  <span className="project-feature-list__icon"><Icon filled name="lightbulb" /></span>
-                  <div><h3>작품의 핵심</h3><p>{selected.description}</p></div>
-                </section>
-                <section>
-                  <span className="project-feature-list__icon"><Icon name="history_edu" /></span>
-                  <div><h3>만든 사람의 기록</h3><blockquote>{selected.retrospective}</blockquote></div>
-                </section>
-                <section>
-                  <span className="project-feature-list__icon"><Icon name="sell" /></span>
-                  <div><h3>작품의 특징</h3><div className="chip-row">{selected.tags.length ? selected.tags.map((tag) => <Chip key={tag}>{tag}</Chip>) : <Chip>개인 프로젝트</Chip>}</div></div>
-                </section>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        {selected ? <ProjectDetail maker={selected.maker.name} project={selected} /> : null}
       </Dialog>
     </PublicShell>
   )

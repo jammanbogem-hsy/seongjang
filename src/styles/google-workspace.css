@@ -3115,9 +3115,24 @@ select:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  padding: 0;
+  border: 0;
   color: var(--primary);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
   font-size: 13px;
   font-weight: 700;
+}
+
+.project-card__open:hover {
+  text-decoration: underline;
+}
+
+.project-card__open:focus-visible {
+  border-radius: 6px;
+  outline: 3px solid rgb(11 87 208 / 20%);
+  outline-offset: 4px;
 }
 
 .project-detail__visual {
