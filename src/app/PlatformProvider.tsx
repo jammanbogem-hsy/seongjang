@@ -102,6 +102,16 @@ function commandError(message: string): CommandResult<never> {
   return { ok: false, error: { code: 'NOT_ALLOWED', message } }
 }
 
+export function isFirebasePermissionDenied(cause: unknown): boolean {
+  if (!cause || typeof cause !== 'object') return false
+  const record = cause as { code?: unknown; message?: unknown }
+  const code = typeof record.code === 'string' ? record.code.toLowerCase() : ''
+  const message = typeof record.message === 'string' ? record.message.toLowerCase() : ''
+  return code === 'permission-denied'
+    || code === 'firestore/permission-denied'
+    || message.includes('missing or insufficient permissions')
+}
+
 function draftPhase(status: FirebaseDraftStatus): AutosavePhase {
   if (status.phase === 'confirmed') return 'saved'
   if (status.phase === 'rejected') return 'error'
@@ -392,6 +402,7 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       setBackendError('Google/Firebase 서버에 연결할 수 없습니다. 인터넷·DNS·VPN·광고 차단 설정에서 google.com과 googleapis.com 접속을 확인해주세요.')
       setBackendPhase('error')
     }, 12_000)
+    let recoveringParticipantSession = false
     const clearConnectionTimeout = () => {
       if (!connectionTimeout) return
       window.clearTimeout(connectionTimeout)
@@ -408,6 +419,20 @@ function FirebasePlatformProvider({ children }: { children: ReactNode }) {
       }
     }, (cause) => {
       clearConnectionTimeout()
+      if (
+        projection.role === 'participant'
+        && isFirebasePermissionDenied(cause)
+      ) {
+        if (recoveringParticipantSession) return
+        recoveringParticipantSession = true
+        setBackendError(null)
+        setBackendPhase('loading')
+        void signOutFirebase().finally(() => {
+          setMembership(null)
+          setSession(null)
+        })
+        return
+      }
       setBackendError(cause.message)
       setBackendPhase('error')
     })

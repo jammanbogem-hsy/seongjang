@@ -1,7 +1,12 @@
 import { StrictMode } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PlatformProvider, publicSlugFromPath, usePlatform } from './PlatformProvider'
+import {
+  isFirebasePermissionDenied,
+  PlatformProvider,
+  publicSlugFromPath,
+  usePlatform,
+} from './PlatformProvider'
 
 function TimerHarness() {
   const { dispatch, timerView } = usePlatform()
@@ -107,5 +112,14 @@ describe('session route isolation', () => {
   it('keeps the legacy room code compatible without making it the new-session default', () => {
     expect(publicSlugFromPath('/join/VIBE26', null)).toBe('vibecoding-2026')
     expect(publicSlugFromPath('/events/session-xy12zz/live', 'session-xy12zz')).toBe('xy12zz')
+  })
+})
+
+describe('Firebase participant session recovery', () => {
+  it('recognizes Firestore permission failures that require PIN re-entry', () => {
+    expect(isFirebasePermissionDenied({ code: 'permission-denied' })).toBe(true)
+    expect(isFirebasePermissionDenied({ code: 'firestore/permission-denied' })).toBe(true)
+    expect(isFirebasePermissionDenied(new Error('Missing or insufficient permissions.'))).toBe(true)
+    expect(isFirebasePermissionDenied(new Error('network unavailable'))).toBe(false)
   })
 })
