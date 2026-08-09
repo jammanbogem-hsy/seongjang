@@ -14,6 +14,7 @@ import {
   initializeFirestore,
   memoryLocalCache,
   type Firestore,
+  type FirestoreSettings,
 } from 'firebase/firestore'
 import { connectFunctionsEmulator, getFunctions, type Functions } from 'firebase/functions'
 
@@ -29,6 +30,15 @@ export const VIBECODING_AUTH_DEPENDENCIES = Object.freeze({
   persistence: browserSessionPersistence,
   popupRedirectResolver: browserPopupRedirectResolver,
 })
+
+export const VIBECODING_FIRESTORE_TRANSPORT_SETTINGS = Object.freeze({
+  // Some school/corporate networks buffer Firestore's streaming WebChannel
+  // responses until the request closes. Forced long polling closes the
+  // response as soon as the backend sends a change, so live timer controls do
+  // not arrive tens of seconds late on those networks.
+  experimentalForceLongPolling: true,
+  experimentalLongPollingOptions: Object.freeze({ timeoutSeconds: 10 }),
+}) satisfies FirestoreSettings
 
 const APP_NAME = 'vibecoding-web'
 const APP_CHECK_SITE_KEY = '6LdSQ3YtAAAAAHLcBU-4dhrmrSgbu8d2LGX_IsPg'
@@ -74,6 +84,7 @@ function firebaseApp(): FirebaseApp {
 function firestore(app: FirebaseApp): Firestore {
   try {
     return initializeFirestore(app, {
+      ...VIBECODING_FIRESTORE_TRANSPORT_SETTINGS,
       // Private participant and organizer documents must not survive a shared
       // browser session. Draft resilience is handled by scoped autosaves.
       localCache: memoryLocalCache(),

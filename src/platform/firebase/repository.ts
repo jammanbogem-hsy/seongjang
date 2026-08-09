@@ -24,7 +24,7 @@ import type {
 } from './types'
 
 const DEVICE_ID_STORAGE_KEY = 'vibecoding.device-id.v1'
-const PARTICIPANT_LIVE_RECONCILE_INTERVAL_MS = 1_000
+const PARTICIPANT_LIVE_RECONCILE_INTERVAL_MS = 5_000
 
 function createDeviceId(): string {
   return `web-${typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -904,8 +904,8 @@ export class FirebaseEventBackend implements FirebaseBackend {
       // member state live, then accept the newest revision. This prevents a
       // suspended browser stream from leaving a participant countdown running
       // after the organizer pauses it. While a timer is running, a bounded
-      // server read also reconciles a missed stream event within about one
-      // second; it stops automatically for idle, paused and completed timers.
+      // server read also reconciles a missed stream event within five seconds;
+      // it stops automatically for idle, paused and completed timers.
       watchDocument('live', publicPath, (document) => {
         publicLiveDocument = readPublicLive(document)
         syncLatestParticipantLive()

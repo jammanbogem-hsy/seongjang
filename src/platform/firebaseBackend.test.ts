@@ -11,7 +11,10 @@ import {
   type FirebaseDocumentSnapshotRecord,
 } from './firebaseBackend'
 import { assembleFirebaseSnapshot } from './firebase/assemble'
-import { VIBECODING_AUTH_DEPENDENCIES } from './firebase/config'
+import {
+  VIBECODING_AUTH_DEPENDENCIES,
+  VIBECODING_FIRESTORE_TRANSPORT_SETTINGS,
+} from './firebase/config'
 
 class FakeDriver implements FirebaseBackendDriver {
   collectionListeners = new Map<string, (snapshot: FirebaseCollectionSnapshotRecord) => void>()
@@ -96,6 +99,13 @@ describe('Firebase production boundary', () => {
     expect(VIBECODING_AUTH_DEPENDENCIES).toMatchObject({
       persistence: browserSessionPersistence,
       popupRedirectResolver: browserPopupRedirectResolver,
+    })
+  })
+
+  it('forces Firestore long polling so buffered networks receive live controls promptly', () => {
+    expect(VIBECODING_FIRESTORE_TRANSPORT_SETTINGS).toEqual({
+      experimentalForceLongPolling: true,
+      experimentalLongPollingOptions: { timeoutSeconds: 10 },
     })
   })
 
@@ -311,7 +321,7 @@ describe('Firebase production boundary', () => {
         } },
       })
 
-      await vi.advanceTimersByTimeAsync(1_000)
+      await vi.advanceTimersByTimeAsync(5_000)
 
       expect(listener.mock.calls.at(-1)?.[0].state.live.timer).toEqual({
         durationSec: 600,
