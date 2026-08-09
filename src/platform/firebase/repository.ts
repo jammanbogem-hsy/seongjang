@@ -841,10 +841,24 @@ export class FirebaseEventBackend implements FirebaseBackend {
       watchLiveInteractions(slideId)
     }
     if (this.role === 'participant') {
+      let memberLiveDocument: FirebaseDocumentRecord | null = null
+      let publicLiveDocument: FirebaseDocumentRecord | null = null
+      const liveRevision = (document: FirebaseDocumentRecord | null) => {
+        const revision = document?.data.revision
+        return typeof revision === 'number' && Number.isFinite(revision) ? revision : -1
+      }
+      const syncLatestParticipantLive = () => {
+        const nextLive = memberLiveDocument && liveRevision(memberLiveDocument) >= liveRevision(publicLiveDocument)
+          ? memberLiveDocument
+          : publicLiveDocument
+        bundle.live = nextLive
+        syncLiveStage(nextLive)
+      }
       // Timer controls are mirrored to the public join document in the same
-      // server transaction. Subscribing participants to that projection keeps
-      // slide and countdown changes independent from member-document cache or
-      // permission refresh delays while private answers remain event-scoped.
+      // server transaction. Keep both the public projection and authenticated
+      // member state live, then accept the newest revision. This prevents a
+      // suspended browser stream from leaving a participant countdown running
+      // after the organizer pauses it.
       watchDocument('live', publicPath, (document) => {
         const data = document?.data ?? {}
         const join = data.join && typeof data.join === 'object'
@@ -853,9 +867,19 @@ export class FirebaseEventBackend implements FirebaseBackend {
         const live = join.live && typeof join.live === 'object'
           ? join.live as Record<string, unknown>
           : null
-        bundle.live = live ? { id: 'state', data: live } : null
-        syncLiveStage(bundle.live)
+        publicLiveDocument = live ? { id: 'state', data: live } : null
+        syncLatestParticipantLive()
       })
+      unsubscribers.push(this.driver.watchDocument(
+        `${eventPath}/live/state`,
+        (snapshot) => {
+          memberLiveDocument = snapshot.document
+          rememberMetadata('memberLive', snapshot)
+          syncLatestParticipantLive()
+          emit()
+        },
+        onError,
+      ))
     } else {
       watchDocument('live', `${eventPath}/live/state`, syncLiveStage)
     }

@@ -188,6 +188,7 @@ describe('Firebase production boundary', () => {
         durationSec: 600,
         endsAt: null,
         remainingSec: 600,
+        revision: 1,
         timerStatus: 'idle',
       } },
     })
@@ -200,6 +201,7 @@ describe('Firebase production boundary', () => {
         durationSec: 600,
         endsAt,
         remainingSec: 600,
+        revision: 2,
         timerStatus: 'running',
       } },
     })
@@ -210,7 +212,34 @@ describe('Firebase production boundary', () => {
       remainingSec: 600,
       status: 'running',
     })
-    expect(driver.documentListeners.has('events/room-vibe26/live/state')).toBe(false)
+
+    driver.emitDocument('events/room-vibe26/live/state', 'state', {
+      activeSlideId: 'stage-build',
+      durationSec: 600,
+      endsAt: null,
+      remainingSec: 69,
+      revision: 3,
+      timerStatus: 'paused',
+    })
+    expect(listener.mock.calls.at(-1)?.[0].state.live.timer).toEqual({
+      durationSec: 600,
+      endsAt: null,
+      remainingSec: 69,
+      status: 'paused',
+    })
+
+    driver.emitDocument('publicEvents/vibecoding-2026', 'vibecoding-2026', {
+      join: { live: {
+        activeSlideId: 'stage-build',
+        durationSec: 600,
+        endsAt,
+        remainingSec: 600,
+        revision: 2,
+        timerStatus: 'running',
+      } },
+    })
+    expect(listener.mock.calls.at(-1)?.[0].state.live.timer.status).toBe('paused')
+    expect(driver.documentListeners.has('events/room-vibe26/live/state')).toBe(true)
     unsubscribe()
   })
 
