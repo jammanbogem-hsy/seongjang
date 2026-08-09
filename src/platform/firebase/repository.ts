@@ -24,6 +24,7 @@ import type {
 } from './types'
 
 const DEVICE_ID_STORAGE_KEY = 'vibecoding.device-id.v1'
+const PARTICIPANT_LIVE_RECONCILE_INTERVAL_MS = 1_000
 
 function createDeviceId(): string {
   return `web-${typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -488,6 +489,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
     let publicRevision = -1
     let publicRootDocument: FirebaseDocumentRecord | null = null
     let publicRevisionDocument: FirebaseDocumentRecord | null = null
+    let participantLiveReconcileTimer: ReturnType<typeof setTimeout> | null = null
     let publicShardDocuments: Record<PublicShardKey, FirebaseDocumentRecord[]> = {
       answers: [],
       comments: [],
@@ -843,23 +845,17 @@ export class FirebaseEventBackend implements FirebaseBackend {
     if (this.role === 'participant') {
       let memberLiveDocument: FirebaseDocumentRecord | null = null
       let publicLiveDocument: FirebaseDocumentRecord | null = null
+      let participantLiveReconcileInFlight = false
       const liveRevision = (document: FirebaseDocumentRecord | null) => {
         const revision = document?.data.revision
         return typeof revision === 'number' && Number.isFinite(revision) ? revision : -1
       }
-      const syncLatestParticipantLive = () => {
-        const nextLive = memberLiveDocument && liveRevision(memberLiveDocument) >= liveRevision(publicLiveDocument)
-          ? memberLiveDocument
-          : publicLiveDocument
-        bundle.live = nextLive
-        syncLiveStage(nextLive)
+      const clearParticipantLiveReconcile = () => {
+        if (participantLiveReconcileTimer === null) return
+        clearTimeout(participantLiveReconcileTimer)
+        participantLiveReconcileTimer = null
       }
-      // Timer controls are mirrored to the public join document in the same
-      // server transaction. Keep both the public projection and authenticated
-      // member state live, then accept the newest revision. This prevents a
-      // suspended browser stream from leaving a participant countdown running
-      // after the organizer pauses it.
-      watchDocument('live', publicPath, (document) => {
+      const readPublicLive = (document: FirebaseDocumentRecord | null) => {
         const data = document?.data ?? {}
         const join = data.join && typeof data.join === 'object'
           ? data.join as Record<string, unknown>
@@ -867,7 +863,51 @@ export class FirebaseEventBackend implements FirebaseBackend {
         const live = join.live && typeof join.live === 'object'
           ? join.live as Record<string, unknown>
           : null
-        publicLiveDocument = live ? { id: 'state', data: live } : null
+        return live ? { id: 'state', data: live } : null
+      }
+      const reconcileParticipantLive = async () => {
+        participantLiveReconcileTimer = null
+        if (!active || participantLiveReconcileInFlight || bundle.live?.data.timerStatus !== 'running') return
+        participantLiveReconcileInFlight = true
+        try {
+          const snapshot = await this.driver.getDocument(publicPath)
+          if (!active) return
+          publicLiveDocument = readPublicLive(snapshot.document)
+          syncLatestParticipantLive()
+          emit()
+        } catch {
+          // The realtime listeners remain authoritative. A failed direct read is
+          // retried only while the last known timer state is still running.
+        } finally {
+          participantLiveReconcileInFlight = false
+          scheduleParticipantLiveReconcile()
+        }
+      }
+      const scheduleParticipantLiveReconcile = () => {
+        clearParticipantLiveReconcile()
+        if (!active || bundle.live?.data.timerStatus !== 'running') return
+        participantLiveReconcileTimer = setTimeout(
+          () => void reconcileParticipantLive(),
+          PARTICIPANT_LIVE_RECONCILE_INTERVAL_MS,
+        )
+      }
+      function syncLatestParticipantLive() {
+        const nextLive = memberLiveDocument && liveRevision(memberLiveDocument) >= liveRevision(publicLiveDocument)
+          ? memberLiveDocument
+          : publicLiveDocument
+        bundle.live = nextLive
+        syncLiveStage(nextLive)
+        scheduleParticipantLiveReconcile()
+      }
+      // Timer controls are mirrored to the public join document in the same
+      // server transaction. Keep both the public projection and authenticated
+      // member state live, then accept the newest revision. This prevents a
+      // suspended browser stream from leaving a participant countdown running
+      // after the organizer pauses it. While a timer is running, a bounded
+      // server read also reconciles a missed stream event within about one
+      // second; it stops automatically for idle, paused and completed timers.
+      watchDocument('live', publicPath, (document) => {
+        publicLiveDocument = readPublicLive(document)
         syncLatestParticipantLive()
       })
       unsubscribers.push(this.driver.watchDocument(
@@ -934,6 +974,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
 
     return () => {
       active = false
+      if (participantLiveReconcileTimer !== null) clearTimeout(participantLiveReconcileTimer)
       participantStageUnsubscribers.forEach((unsubscribe) => unsubscribe())
       liveInteractionUnsubscribers.forEach((unsubscribe) => unsubscribe())
       publicProjectUnsubscribe?.()

@@ -2,6 +2,7 @@ import type { User } from 'firebase/auth'
 import {
   collection,
   doc,
+  getDocFromServer,
   limit as queryLimit,
   onSnapshot,
   orderBy,
@@ -57,6 +58,7 @@ export interface FirebaseCollectionSpec {
 
 export interface FirebaseBackendDriver {
   currentUser: () => User | null
+  getDocument: (path: string) => Promise<FirebaseDocumentSnapshotRecord>
   invoke: <TResult>(name: string, payload: unknown) => Promise<TResult>
   serverTimestamp: () => unknown
   setDocument: (path: string, data: Record<string, unknown>) => Promise<void>
@@ -85,6 +87,17 @@ export function createFirebaseSdkDriver(
 ): FirebaseBackendDriver {
   return {
     currentUser: () => services.auth.currentUser,
+    getDocument: async (path) => {
+      const snapshot = await getDocFromServer(doc(services.db, path))
+      return {
+        document: snapshot.exists() ? record(snapshot.id, snapshot.data(), {
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        }) : null,
+        fromCache: snapshot.metadata.fromCache,
+        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+      }
+    },
     invoke: async <TResult,>(name: string, payload: unknown) => {
       const callable = httpsCallable<unknown, TResult>(services.functions, name)
       return (await callable(payload)).data

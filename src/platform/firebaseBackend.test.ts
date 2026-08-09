@@ -17,11 +17,20 @@ class FakeDriver implements FirebaseBackendDriver {
   collectionListeners = new Map<string, (snapshot: FirebaseCollectionSnapshotRecord) => void>()
   collectionSpecs: FirebaseCollectionSpec[] = []
   documentListeners = new Map<string, (snapshot: FirebaseDocumentSnapshotRecord) => void>()
+  serverDocuments = new Map<string, FirebaseDocumentSnapshotRecord>()
   invocations: Array<{ name: string; payload: unknown }> = []
   writes: Array<{ data: Record<string, unknown>; path: string }> = []
 
   currentUser = () => ({ uid: 'participant-01' }) as User
   serverTimestamp = () => 'SERVER_TIMESTAMP'
+
+  getDocument = async (path: string): Promise<FirebaseDocumentSnapshotRecord> => (
+    this.serverDocuments.get(path) ?? {
+      document: null,
+      fromCache: false,
+      hasPendingWrites: false,
+    }
+  )
 
   invoke = async <TResult,>(name: string, payload: unknown): Promise<TResult> => {
     this.invocations.push({ name, payload })
@@ -51,7 +60,17 @@ class FakeDriver implements FirebaseBackendDriver {
   }
 
   emitDocument(path: string, id: string, data: Record<string, unknown>) {
-    this.documentListeners.get(path)?.({
+    const snapshot = {
+      document: { id, data },
+      fromCache: false,
+      hasPendingWrites: false,
+    }
+    this.serverDocuments.set(path, snapshot)
+    this.documentListeners.get(path)?.(snapshot)
+  }
+
+  stageServerDocument(path: string, id: string, data: Record<string, unknown>) {
+    this.serverDocuments.set(path, {
       document: { id, data },
       fromCache: false,
       hasPendingWrites: false,
@@ -241,6 +260,69 @@ describe('Firebase production boundary', () => {
     expect(listener.mock.calls.at(-1)?.[0].state.live.timer.status).toBe('paused')
     expect(driver.documentListeners.has('events/room-vibe26/live/state')).toBe(true)
     unsubscribe()
+  })
+
+  it('reconciles a missed pause from the server while the participant timer is running', async () => {
+    vi.useFakeTimers()
+    const driver = new FakeDriver()
+    const backend = createFirebaseEventBackend({
+      driver,
+      eventId: 'room-vibe26',
+      participantId: 'participant-01',
+      publicSlug: 'vibecoding-2026',
+      role: 'participant',
+    })
+    const listener = vi.fn()
+    const unsubscribe = backend.subscribe(listener)
+
+    try {
+      driver.emitDocument('events/room-vibe26', 'room-vibe26', {
+        capacity: 100,
+        code: 'VIBE26',
+        lifecycle: 'live',
+        title: '바이브코딩',
+      })
+      driver.emitCollection('events/room-vibe26/slides', [{
+        id: 'stage-build',
+        data: { durationSec: 600, order: 1, title: '만들기' },
+      }])
+      driver.emitDocument('publicEvents/vibecoding-2026', 'vibecoding-2026', {
+        join: { live: {
+          activeSlideId: 'stage-build',
+          durationSec: 600,
+          endsAt: new Date('2026-08-09T13:20:00.000Z'),
+          remainingSec: 600,
+          revision: 20,
+          timerStatus: 'running',
+        } },
+      })
+      expect(listener.mock.calls.at(-1)?.[0].state.live.timer.status).toBe('running')
+
+      // Simulate the organizer pause reaching Firestore while the browser's
+      // onSnapshot stream misses or delays that update.
+      driver.stageServerDocument('publicEvents/vibecoding-2026', 'vibecoding-2026', {
+        join: { live: {
+          activeSlideId: 'stage-build',
+          durationSec: 600,
+          endsAt: null,
+          remainingSec: 73,
+          revision: 21,
+          timerStatus: 'paused',
+        } },
+      })
+
+      await vi.advanceTimersByTimeAsync(1_000)
+
+      expect(listener.mock.calls.at(-1)?.[0].state.live.timer).toEqual({
+        durationSec: 600,
+        endsAt: null,
+        remainingSec: 73,
+        status: 'paused',
+      })
+    } finally {
+      unsubscribe()
+      vi.useRealTimers()
+    }
   })
 
   it('writes participant answer drafts directly and reports server confirmation', async () => {
