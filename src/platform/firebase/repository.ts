@@ -833,13 +833,32 @@ export class FirebaseEventBackend implements FirebaseBackend {
 
     const eventPath = `events/${this.eventId}`
     watchDocument('event', eventPath)
-    watchDocument('live', `${eventPath}/live/state`, (document) => {
+    const syncLiveStage = (document: FirebaseDocumentRecord | null) => {
       const slideId = typeof document?.data.activeSlideId === 'string'
         ? document.data.activeSlideId
         : ''
       watchParticipantStage(slideId)
       watchLiveInteractions(slideId)
-    })
+    }
+    if (this.role === 'participant') {
+      // Timer controls are mirrored to the public join document in the same
+      // server transaction. Subscribing participants to that projection keeps
+      // slide and countdown changes independent from member-document cache or
+      // permission refresh delays while private answers remain event-scoped.
+      watchDocument('live', publicPath, (document) => {
+        const data = document?.data ?? {}
+        const join = data.join && typeof data.join === 'object'
+          ? data.join as Record<string, unknown>
+          : data
+        const live = join.live && typeof join.live === 'object'
+          ? join.live as Record<string, unknown>
+          : null
+        bundle.live = live ? { id: 'state', data: live } : null
+        syncLiveStage(bundle.live)
+      })
+    } else {
+      watchDocument('live', `${eventPath}/live/state`, syncLiveStage)
+    }
     watchCollection('slides', `${eventPath}/slides`, {
       limit: LISTENER_LIMITS.slides,
       path: `${eventPath}/slides`,

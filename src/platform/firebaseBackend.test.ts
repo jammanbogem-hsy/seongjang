@@ -125,14 +125,17 @@ describe('Firebase production boundary', () => {
     const backend = createFirebaseEventBackend({
       driver,
       eventId: 'room-vibe26',
+      publicSlug: 'vibecoding-2026',
       participantId: 'participant-01',
       role: 'participant',
     })
     const unsubscribe = backend.subscribe(() => undefined)
 
-    driver.emitDocument('events/room-vibe26/live/state', 'state', {
-      activeSlideId: 'stage-build',
-      timerStatus: 'idle',
+    driver.emitDocument('publicEvents/vibecoding-2026', 'vibecoding-2026', {
+      join: { live: {
+        activeSlideId: 'stage-build',
+        timerStatus: 'idle',
+      } },
     })
 
     expect(driver.collectionSpecs).toEqual(expect.arrayContaining([
@@ -151,6 +154,63 @@ describe('Firebase production boundary', () => {
         ]),
       }),
     ]))
+    unsubscribe()
+  })
+
+  it('updates the participant countdown from the public live projection', () => {
+    const driver = new FakeDriver()
+    const backend = createFirebaseEventBackend({
+      driver,
+      eventId: 'room-vibe26',
+      participantId: 'participant-01',
+      publicSlug: 'vibecoding-2026',
+      role: 'participant',
+    })
+    const listener = vi.fn()
+    const unsubscribe = backend.subscribe(listener)
+
+    driver.emitDocument('events/room-vibe26', 'room-vibe26', {
+      capacity: 100,
+      code: 'VIBE26',
+      eventDate: '2026-08-09',
+      lifecycle: 'live',
+      organizerName: '주최자',
+      tagline: '행사',
+      title: '바이브코딩',
+    })
+    driver.emitCollection('events/room-vibe26/slides', [{
+      id: 'stage-build',
+      data: { durationSec: 600, order: 1, title: '만들기' },
+    }])
+    driver.emitDocument('publicEvents/vibecoding-2026', 'vibecoding-2026', {
+      join: { live: {
+        activeSlideId: 'stage-build',
+        durationSec: 600,
+        endsAt: null,
+        remainingSec: 600,
+        timerStatus: 'idle',
+      } },
+    })
+    expect(listener.mock.calls.at(-1)?.[0].state.live.timer.status).toBe('idle')
+
+    const endsAt = new Date('2026-08-09T13:20:00.000Z')
+    driver.emitDocument('publicEvents/vibecoding-2026', 'vibecoding-2026', {
+      join: { live: {
+        activeSlideId: 'stage-build',
+        durationSec: 600,
+        endsAt,
+        remainingSec: 600,
+        timerStatus: 'running',
+      } },
+    })
+
+    expect(listener.mock.calls.at(-1)?.[0].state.live.timer).toEqual({
+      durationSec: 600,
+      endsAt: endsAt.getTime(),
+      remainingSec: 600,
+      status: 'running',
+    })
+    expect(driver.documentListeners.has('events/room-vibe26/live/state')).toBe(false)
     unsubscribe()
   })
 
@@ -312,6 +372,55 @@ describe('Firebase production boundary', () => {
     expect(snapshot.state.participants[0]).toMatchObject({ nickname: '별빛', pin: '' })
     expect(JSON.stringify(snapshot.state)).not.toContain('2468')
     unsubscribe()
+  })
+
+  it('prefers canonical live timer fields over a stale legacy timer object', () => {
+    const endsAt = new Date('2026-08-09T08:20:00.000Z')
+    const snapshot = assembleFirebaseSnapshot({
+      adminInvites: [],
+      answerDrafts: [],
+      answers: [],
+      comments: [],
+      event: { id: 'room-vibe26', data: {
+        capacity: 100,
+        code: 'VIBE26',
+        eventDate: '2026-08-09',
+        organizerName: '주최자',
+        tagline: '행사',
+        title: '바이브코딩',
+      } },
+      live: { id: 'state', data: {
+        activeSlideId: 'stage-build',
+        durationSec: 600,
+        endsAt,
+        remainingSec: 600,
+        timerStatus: 'running',
+        timer: {
+          durationSec: 180,
+          endsAt: null,
+          remainingSec: 180,
+          status: 'idle',
+        },
+      } },
+      liveChatMessages: [],
+      liveReactions: [],
+      participants: [],
+      projectDrafts: [],
+      publishedSnapshot: null,
+      reviewThreads: [],
+      slides: [{ id: 'stage-build', data: { durationSec: 600, order: 1, title: '만들기' } }],
+      submissions: [],
+      synthesis: null,
+      themes: [],
+    }, { fromCache: false, hasPendingWrites: false })
+
+    expect(snapshot).not.toBeNull()
+    expect(snapshot!.state.live.timer).toEqual({
+      durationSec: 600,
+      endsAt: endsAt.getTime(),
+      remainingSec: 600,
+      status: 'running',
+    })
   })
 
   it('keeps post-submission answer and project drafts available after reconnecting', () => {

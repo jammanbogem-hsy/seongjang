@@ -32,6 +32,10 @@ function object(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {}
 }
 
+function hasOwn(record: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key)
+}
+
 function text(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback
 }
@@ -185,7 +189,13 @@ function parseLive(
     slide.id,
     boolean(slide.data.commentsEnabled),
   ]))
-  const timerStatus = timer.status ?? data.timerStatus
+  // Current Firebase functions write canonical timer values at the top level.
+  // Some events still contain the former nested `timer` object, so each
+  // canonical field must win even when its value is explicitly null.
+  const timerStatus = hasOwn(data, 'timerStatus') ? data.timerStatus : timer.status
+  const durationSec = hasOwn(data, 'durationSec') ? data.durationSec : timer.durationSec
+  const remainingSec = hasOwn(data, 'remainingSec') ? data.remainingSec : timer.remainingSec
+  const endsAt = hasOwn(data, 'endsAt') ? data.endsAt : timer.endsAt
   return {
     activeSlideIndex,
     answersRevealedBySlide: Object.keys(object(data.answersRevealedBySlide)).length
@@ -196,9 +206,9 @@ function parseLive(
       : commentsFromSlides,
     startedAt: data.startedAt ? iso(data.startedAt) : null,
     timer: {
-      durationSec: number(timer.durationSec ?? data.durationSec),
-      endsAt: millis(timer.endsAt ?? data.endsAt),
-      remainingSec: number(timer.remainingSec ?? data.remainingSec),
+      durationSec: number(durationSec),
+      endsAt: millis(endsAt),
+      remainingSec: number(remainingSec),
       status: timerStatus === 'running' || timerStatus === 'paused' || timerStatus === 'complete'
         ? timerStatus
         : 'idle',
