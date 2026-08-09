@@ -24,7 +24,6 @@ import type {
 } from './types'
 
 const DEVICE_ID_STORAGE_KEY = 'vibecoding.device-id.v1'
-const PARTICIPANT_LIVE_RECONCILE_INTERVAL_MS = 5_000
 
 function createDeviceId(): string {
   return `web-${typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -489,7 +488,6 @@ export class FirebaseEventBackend implements FirebaseBackend {
     let publicRevision = -1
     let publicRootDocument: FirebaseDocumentRecord | null = null
     let publicRevisionDocument: FirebaseDocumentRecord | null = null
-    let participantLiveReconcileTimer: ReturnType<typeof setTimeout> | null = null
     let publicShardDocuments: Record<PublicShardKey, FirebaseDocumentRecord[]> = {
       answers: [],
       comments: [],
@@ -850,11 +848,6 @@ export class FirebaseEventBackend implements FirebaseBackend {
         const revision = document?.data.revision
         return typeof revision === 'number' && Number.isFinite(revision) ? revision : -1
       }
-      const clearParticipantLiveReconcile = () => {
-        if (participantLiveReconcileTimer === null) return
-        clearTimeout(participantLiveReconcileTimer)
-        participantLiveReconcileTimer = null
-      }
       const readPublicLive = (document: FirebaseDocumentRecord | null) => {
         const data = document?.data ?? {}
         const join = data.join && typeof data.join === 'object'
@@ -866,8 +859,7 @@ export class FirebaseEventBackend implements FirebaseBackend {
         return live ? { id: 'state', data: live } : null
       }
       const reconcileParticipantLive = async () => {
-        participantLiveReconcileTimer = null
-        if (!active || participantLiveReconcileInFlight || bundle.live?.data.timerStatus !== 'running') return
+        if (!active || participantLiveReconcileInFlight) return
         participantLiveReconcileInFlight = true
         try {
           const snapshot = await this.driver.getDocument(publicPath)
@@ -876,20 +868,11 @@ export class FirebaseEventBackend implements FirebaseBackend {
           syncLatestParticipantLive()
           emit()
         } catch {
-          // The realtime listeners remain authoritative. A failed direct read is
-          // retried only while the last known timer state is still running.
+          // The realtime listeners remain authoritative. The next online,
+          // focus or visibility event will retry this one-shot reconciliation.
         } finally {
           participantLiveReconcileInFlight = false
-          scheduleParticipantLiveReconcile()
         }
-      }
-      const scheduleParticipantLiveReconcile = () => {
-        clearParticipantLiveReconcile()
-        if (!active || bundle.live?.data.timerStatus !== 'running') return
-        participantLiveReconcileTimer = setTimeout(
-          () => void reconcileParticipantLive(),
-          PARTICIPANT_LIVE_RECONCILE_INTERVAL_MS,
-        )
       }
       function syncLatestParticipantLive() {
         const nextLive = memberLiveDocument && liveRevision(memberLiveDocument) >= liveRevision(publicLiveDocument)
@@ -897,15 +880,14 @@ export class FirebaseEventBackend implements FirebaseBackend {
           : publicLiveDocument
         bundle.live = nextLive
         syncLiveStage(nextLive)
-        scheduleParticipantLiveReconcile()
       }
       // Timer controls are mirrored to the public join document in the same
       // server transaction. Keep both the public projection and authenticated
       // member state live, then accept the newest revision. This prevents a
       // suspended browser stream from leaving a participant countdown running
-      // after the organizer pauses it. While a timer is running, a bounded
-      // server read also reconciles a missed stream event within five seconds;
-      // it stops automatically for idle, paused and completed timers.
+      // after the organizer pauses it. The forced long-polling transport sends
+      // changes immediately; reconnect and focus events add a one-shot server
+      // reconciliation without continuous polling costs.
       watchDocument('live', publicPath, (document) => {
         publicLiveDocument = readPublicLive(document)
         syncLatestParticipantLive()
@@ -920,6 +902,26 @@ export class FirebaseEventBackend implements FirebaseBackend {
         },
         onError,
       ))
+      if (typeof window !== 'undefined') {
+        const reconcileOnResume = () => void reconcileParticipantLive()
+        const reconcileOnVisibility = () => {
+          if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+            reconcileOnResume()
+          }
+        }
+        window.addEventListener('focus', reconcileOnResume)
+        window.addEventListener('online', reconcileOnResume)
+        if (typeof document !== 'undefined') {
+          document.addEventListener('visibilitychange', reconcileOnVisibility)
+        }
+        unsubscribers.push(() => {
+          window.removeEventListener('focus', reconcileOnResume)
+          window.removeEventListener('online', reconcileOnResume)
+          if (typeof document !== 'undefined') {
+            document.removeEventListener('visibilitychange', reconcileOnVisibility)
+          }
+        })
+      }
     } else {
       watchDocument('live', `${eventPath}/live/state`, syncLiveStage)
     }
@@ -974,7 +976,6 @@ export class FirebaseEventBackend implements FirebaseBackend {
 
     return () => {
       active = false
-      if (participantLiveReconcileTimer !== null) clearTimeout(participantLiveReconcileTimer)
       participantStageUnsubscribers.forEach((unsubscribe) => unsubscribe())
       liveInteractionUnsubscribers.forEach((unsubscribe) => unsubscribe())
       publicProjectUnsubscribe?.()

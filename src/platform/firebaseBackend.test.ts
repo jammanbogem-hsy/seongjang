@@ -272,8 +272,7 @@ describe('Firebase production boundary', () => {
     unsubscribe()
   })
 
-  it('reconciles a missed pause from the server while the participant timer is running', async () => {
-    vi.useFakeTimers()
+  it('reconciles a missed pause when the participant window regains focus', async () => {
     const driver = new FakeDriver()
     const backend = createFirebaseEventBackend({
       driver,
@@ -321,17 +320,18 @@ describe('Firebase production boundary', () => {
         } },
       })
 
-      await vi.advanceTimersByTimeAsync(5_000)
+      window.dispatchEvent(new Event('focus'))
 
-      expect(listener.mock.calls.at(-1)?.[0].state.live.timer).toEqual({
-        durationSec: 600,
-        endsAt: null,
-        remainingSec: 73,
-        status: 'paused',
+      await vi.waitFor(() => {
+        expect(listener.mock.calls.at(-1)?.[0].state.live.timer).toEqual({
+          durationSec: 600,
+          endsAt: null,
+          remainingSec: 73,
+          status: 'paused',
+        })
       })
     } finally {
       unsubscribe()
-      vi.useRealTimers()
     }
   })
 
